@@ -15,7 +15,7 @@
 **/*.usdz
 
 # except ours
-!sources/Juggling_Agent/Juggling_Agent/assets/juggle_agent_v0.usd
+!source/Juggling_Agent/Juggling_Agent/assets/juggle_agent_v0.usd
 
 # Python
 .DS_Store
