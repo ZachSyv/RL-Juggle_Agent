@@ -9,6 +9,7 @@
 
 ## Learning
 
+- Inpliment Reward function (Zach)
 - Impliment PPO
 
 ## Overview
