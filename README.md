@@ -4,7 +4,7 @@
 
 ## Model
 
-- Make a flipped version of the hand in thr usd file
+- Make a flipped version of the hand in the .usd file
 - Add an additional joint so the forearm can move as well
 
 ## Learning
