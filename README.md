@@ -1,5 +1,17 @@
 # Template for Isaac Lab Projects
 
+# TODOs
+
+## Model
+
+- Make a flipped version of the hand in the .usd file
+- Add an additional joint so the forearm can move as well
+
+## Learning
+
+- Inpliment Reward function (Zach)
+- Impliment PPO
+
 ## Overview
 
 This project/repository serves as a template for building projects or extensions based on Isaac Lab.
