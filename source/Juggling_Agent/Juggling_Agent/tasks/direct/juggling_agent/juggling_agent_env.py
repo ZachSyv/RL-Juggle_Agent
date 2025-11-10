@@ -31,7 +31,7 @@ class JugglingAgentEnv(DirectRLEnv):
         self.joint_vel = self.robot.data.joint_vel
 
     def _setup_scene(self):
-        self.robot = Articulation(self.cfg.robot_cfg)
+        self.robot = Articulation(self.cfg.hand_cfg)
         # add ground plane
         spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
         # clone and replicate
