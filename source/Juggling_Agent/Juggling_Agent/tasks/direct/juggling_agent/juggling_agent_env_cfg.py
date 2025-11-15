@@ -3,6 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 import os
+import math
 
 from isaaclab_assets.robots.cartpole import CARTPOLE_CFG
 
@@ -21,26 +22,12 @@ from isaaclab.actuators import ImplicitActuatorCfg
 
 import pdb
 
-@configclass
-class JugglingAgentEnvCfg(DirectRLEnvCfg):
-    # env
-    decimation = 2
-    episode_length_s = 5.0
-    # - spaces definition
-    action_space = 1
-    observation_space = 4
-    state_space = 0
-
-    # simulation
-    sim: SimulationCfg = SimulationCfg(dt=1 / 120, render_interval=decimation)
-
-    # robot(s)
-    # hand_cfg: ArticulationCfg = CARTPOLE_CFG.replace(prim_path="/World/envs/env_.*/Hand")
+def get_hand_cfg(prim_name, usd_file_name, pos, rot):
     hand_cfg = ArticulationCfg(
-        prim_path="/World/envs/env_.*/Hand",
-        init_state=ArticulationCfg.InitialStateCfg(pos=[0.0, 0.0, 0.5], rot=[1, 0, 0, 0]),
+        prim_path=f"/World/envs/env_.*/{prim_name}",
+        init_state=ArticulationCfg.InitialStateCfg(pos=pos, rot=rot),
         spawn=sim_utils.UsdFileCfg(
-            usd_path=os.path.join(CUSTOM_ASSET_DIR, "juggle_agent_v0.usd"),
+            usd_path=os.path.join(CUSTOM_ASSET_DIR, usd_file_name),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 disable_gravity=True,
                 retain_accelerations=True,
@@ -58,36 +45,59 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
         ),
         actuators={
             "fingers": ImplicitActuatorCfg(
-                joint_names_expr=["robot0_WR.*", "robot0_(FF|MF|RF|LF|TH)J(3|2|1)", "robot0_(LF|TH)J4", "robot0_THJ0"],
+                joint_names_expr=["WR.*", "(FF|MF|RF|LF|TH)J(4|3|2|1)", "(LF|TH)J5", "elbow_(rotate|bend)"],
                 effort_limit={
-                    "robot0_WRJ1": 4.785,
-                    "robot0_WRJ0": 2.175,
-                    "robot0_(FF|MF|RF|LF)J1": 0.7245,
-                    "robot0_FFJ(3|2)": 0.9,
-                    "robot0_MFJ(3|2)": 0.9,
-                    "robot0_RFJ(3|2)": 0.9,
-                    "robot0_LFJ(4|3|2)": 0.9,
-                    "robot0_THJ4": 2.3722,
-                    "robot0_THJ3": 1.45,
-                    "robot0_THJ(2|1)": 0.99,
-                    "robot0_THJ0": 0.81,
+                    "WRJ2": 4.785,
+                    "WRJ1": 2.175,
+                    "(FF|MF|RF|LF)J1": 0.7245,
+                    "FFJ(4|3|2)": 0.9,
+                    "MFJ(4|3|2)": 0.9,
+                    "RFJ(4|3|2)": 0.9,
+                    "LFJ(5|4|3|2)": 0.9,
+                    "THJ5": 2.3722,
+                    "THJ4": 1.45,
+                    "THJ(3|2)": 0.99,
+                    "THJ1": 0.81,
+                    "elbow_(rotate|bend)": 0.8
                 },
                 stiffness={
-                    "robot0_WRJ.*": 5.0,
-                    "robot0_(FF|MF|RF|LF|TH)J(3|2|1)": 1.0,
-                    "robot0_(LF|TH)J4": 1.0,
-                    "robot0_THJ0": 1.0,
+                    "WRJ.*": 5.0,
+                    "(FF|MF|RF|LF|TH)J(4|3|2|1)": 1.0,
+                    "(LF|TH)J5": 1.0,
+                    "elbow_(rotate|bend)": 1.0
                 },
                 damping={
-                    "robot0_WRJ.*": 0.5,
-                    "robot0_(FF|MF|RF|LF|TH)J(3|2|1)": 0.1,
-                    "robot0_(LF|TH)J4": 0.1,
-                    "robot0_THJ0": 0.1,
+                    "WRJ.*": 0.5,
+                    "(FF|MF|RF|LF|TH)J(4|3|2|1)": 0.1,
+                    "(LF|TH)J5": 0.1,
+                    "elbow_(rotate|bend)": 1.0
                 },
             ),
         },
-        actuator_value_resolution_debug_print=True
+        actuator_value_resolution_debug_print=False
     )
+    return hand_cfg
+
+
+@configclass
+class JugglingAgentEnvCfg(DirectRLEnvCfg):
+    # env
+    decimation = 2
+    episode_length_s = 5.0
+    # - spaces definition
+    action_space = 1
+    observation_space = 4
+    state_space = 0
+
+    # simulation
+    sim: SimulationCfg = SimulationCfg(dt=1 / 100, render_interval=decimation)
+
+    # robot(s)
+    # hand_cfg: ArticulationCfg = CARTPOLE_CFG.replace(prim_path="/World/envs/env_.*/Hand")
+    left_hand_cfg = get_hand_cfg("left_hand", "shadow_hand_left_with_elbow.usd",
+                                 pos=[0, -0.5, 0.5], rot=[-math.sqrt(2) / 2, 0, math.sqrt(2) / 2, 0])
+    right_hand_cfg = get_hand_cfg("right_hand", "shadow_hand_right_with_elbow.usd",
+                                  pos=[0, 0.5, 0.5], rot=[-math.sqrt(2) / 2, 0, math.sqrt(2) / 2, 0])
 
     # pdb.set_trace()
 
