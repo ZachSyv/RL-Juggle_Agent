@@ -92,7 +92,8 @@ class JugglingAgentEnv(DirectRLEnv):
         # Throw/Catch hand tracking
         self.ball_throw_hand = torch.zeros((num_envs, self.cfg.num_balls), device=device, dtype=torch.int32)  # 0 or 1 for left/right hand
         self.ball_catch_hand = torch.zeros((num_envs, self.cfg.num_balls), device=device, dtype=torch.int32)  # 0 or 1 for left/right hand
-        
+        self.prev_in_hand = torch.zeros((num_envs, self.cfg.num_balls), device=device, dtype=torch.bool)
+
         # target hand position for ball, used in drop reward calculation
         self.ball_target_hand_pos = torch.zeros((num_envs, self.cfg.num_hands, 3), device=device)
 
@@ -161,9 +162,17 @@ class JugglingAgentEnv(DirectRLEnv):
         #for ball in range(self.cfg.num_balls): TODO
 
 
-        # update prev_
+        # update prev_in_hand, we need to know if the ball was in hand in the previous step to detect throw events
+        self.prev_in_hand = torch.zeros((self.num_envs, self.cfg.num_balls), device=self.device, dtype=torch.bool)
+        for ball in range(self.cfg.num_balls):
+            self.prev_in_hand[:, ball] = (
+                (torch.norm(self.ball_pos[:, ball] - self.hand_pos[:, 0], dim=-1) < self.catch_radius) | 
+                (torch.norm(self.ball_pos[:, ball] - self.hand_pos[:, 1], dim=-1) < self.catch_radius)
+            )
 
-        # track peak heights
+        #######################
+        # track peak heights #
+        #######################
         for ball in range(self.cfg.num_balls):
             self.ball_peak_height[:, ball] = torch.max(
                 self.ball_peak_height[:, ball],
@@ -227,6 +236,7 @@ class JugglingAgentEnv(DirectRLEnv):
         self.catch_events[env_ids] = -1
         self.drop_events[env_ids] = -1
         self.throw_events[env_ids] = -1
+        self.prev_in_hand[env_ids] = False
 
         self.prev_actions[env_ids] = 0
         self.actions[env_ids] = 0
