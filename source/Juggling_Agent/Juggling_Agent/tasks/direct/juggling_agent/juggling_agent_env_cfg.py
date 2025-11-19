@@ -104,18 +104,22 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=4.0, replicate_physics=True)
 
-    # custom parameters/scales
-    # - controllable joint
-    # cart_dof_name = "cart_to_pole"
-    # pole_dof_name = "slider_to_cart"
-    # - action scale
-    # action_scale = 100.0  # [N]
-    # - reward scales
-    # rew_scale_alive = 1.0
-    # rew_scale_terminated = -2.0
-    # rew_scale_pole_pos = -1.0
-    # rew_scale_cart_vel = -0.01
-    # rew_scale_pole_vel = -0.005
-    # - reset states/conditions
-    # initial_pole_angle_range = [-0.25, 0.25]  # pole angle sample range on reset [rad]
-    # max_cart_pos = 3.0  # reset if cart exceeds this position [m]
+    # reward weights
+    w_hoarding = 2.0        # should be high to strongly discourage hoarding 2 balls in one hand
+    w_jitter = 0.001        # should be low to not overly discourage small adjustments, this is to prevent random drifting
+    w_highest = 0.03        # the highest ball, small becaues it's continuously added
+    w_rythem = 0.2         # should be moderate to encourage consistent timing
+    w_catch = 5.0          # should be high to strongly encourage successful catches
+    w_drop = 1.0           # should be moderate
+
+    # geometric parameters
+    catch_radius = 0.1  # radius within which a catch is registered, this definitly needs to be configured before we start
+    target_height = 0.5 # height at which the ball apex should be, this also definitly needs to be configured before we start
+    target_rythem = 0.4 # 60/150 seconds per throw, i.e. 2.5 throws per second
+    ground_height = 0.0
+
+    # tolerances
+    sigma_rythem = 0.05
+    sigma_drop_distance = 0.2
+    sigma_apex_height = 0.1
+    min_throw_height = 0.2 # minimum height a ball must reach to be considered a valid throw, done to prevent micro-throws
