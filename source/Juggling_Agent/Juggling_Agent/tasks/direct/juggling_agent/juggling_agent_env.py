@@ -264,6 +264,8 @@ def compute_rewards(
     ###################
 
     # calculate if the ball is in the hand, use the catch_radius variable TODO
+    # should only be calculated after 1 second has passed to allow for initial positioning
+    
     # might be this?
     #in_hand = (ball_pos - hand_pos) < self.catch_radius
 
