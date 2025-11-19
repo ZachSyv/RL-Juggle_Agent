@@ -2,15 +2,16 @@
 
 # TODOs
 
-## Model
+## ~Model~
 
-- Make a flipped version of the hand in the .usd file
-- Add an additional joint so the forearm can move as well
+- ~Make a flipped version of the hand in the .usd file~
+- ~Add an additional joint so the forearm can move as well~
+- Preset simulator so the hands are holding the balls correctly
 
 ## Learning
 
-- Inpliment Reward function (Zach)
-- Impliment PPO
+- Finish reward function
+- Impliment other needed functions to get simulator to work
 
 ## Overview
 
