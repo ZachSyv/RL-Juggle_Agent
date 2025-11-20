@@ -123,3 +123,5 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     sigma_drop_distance = 0.2
     sigma_apex_height = 0.1
     min_throw_height = 0.2 # minimum height a ball must reach to be considered a valid throw, done to prevent micro-throws
+    min_vertical_velocity = 0.1 # minimum vertical velocity at throw time to be considered a valid throw
+    
