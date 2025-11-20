@@ -199,16 +199,133 @@ class JugglingAgentEnv(DirectRLEnv):
         
 
     def _get_rewards(self) -> torch.Tensor:
-        total_reward = compute_rewards(
-            1.0,
-            -2.0, -1.0, -0.01, -0.005,
-            self.joint_pos[:, self.placeholder_idx2[0]],
-            self.joint_vel[:, self.placeholder_idx2[0]],
-            self.joint_pos[:, self.placeholder_idx1[0]],
-            self.joint_vel[:, self.placeholder_idx1[0]],
-            self.reset_terminated,
+        # total_reward = compute_rewards(
+        #     1.0,
+        #     -2.0, -1.0, -0.01, -0.005,
+        #     self.joint_pos[:, self.placeholder_idx2[0]],
+        #     self.joint_vel[:, self.placeholder_idx2[0]],
+        #     self.joint_pos[:, self.placeholder_idx1[0]],
+        #     self.joint_vel[:, self.placeholder_idx1[0]],
+        #     self.reset_terminated,
+        # )
+        # return total_reward
+        
+        num_envs = self.num_envs
+        device = self.device
+        ball_pos = self.ball_pos
+        ball_vel = self.ball_vel
+        hand_pos = self.hand_pos
+        actions = self.actions
+        prev_actions = self.prev_actions
+
+        reward = torch.zeros(num_envs, device=self.device)
+
+        ###################
+        # hoarding penalty#
+        ###################
+
+        # calculate if the ball is in the hand, use the catch_radius variable TODO
+        # should only be calculated after 1 second has passed to allow for initial positioning
+        
+        # might be this?
+        #in_hand = (ball_pos - hand_pos) < self.catch_radius
+
+        # balls_in_L =
+        # balls_in_R =
+
+        # this part is finished
+        hoarding = (balls_in_L > 1) | (balls_in_R > 1)
+        reward += -self.w_hoarding * hoarding.float()
+
+        ###################
+        # jitter penalty  #
+        ###################
+
+        delta_a = actions - prev_actions
+        jitter = torch.sum(delta_a**2, dim=-1)
+        reward += -self.w_jitter * jitter
+
+
+        ###################
+        # highest ball reward # TODO
+        ###################
+
+
+        ###################
+        # catch reward    #
+        ###################
+
+        # only added on catch event
+        # two parts here, get the max height of the caught ball
+        #                 check if the ball is caught by the opposite hand
+
+        # TODO, define catch events, it should be a tensor of shape (num_envs,) with -1 if no catch, otherwise the ball id
+        catch_mask = self.catch_events >= 0
+        if catch_mask.any():
+
+            ball_id = self.catch_events[catch_mask] 
+            peak = self.ball_peak_height[catch_mask, ball_id]
+
+            # height Gaussian
+            # need to define h_target TODO
+            Gh = torch.exp(- (peak - self.h_target)**2 / (2 * self.sigma_h**2))
+
+            # hand indices
+            # need to define ball_throw_hand and ball_catch_hand TODO
+            throw_hand = self.ball_throw_hand[catch_mask, ball_id]   # 0 or 1
+            catch_hand = self.ball_catch_hand[catch_mask, ball_id]   # 0 or 1
+                
+            cross = torch.where(
+            throw_hand != catch_hand,
+            torch.tensor(1.0, device=self.device),
+            torch.tensor(-0.5, device=self.device)
         )
-        return total_reward
+
+        reward[catch_mask] += self.w_catch * Gh * cross
+
+        ###################
+        # drop reward  #
+        ###################
+
+        # only added on drop event
+        # TODO
+        drop_mask = self.drop_events >= 0 # TODO, define drop events, happens when the ball y coordinate hits the ground (the ground_height variable defined in cfg). 
+        #Also should be a tensor of shape (num_envs,) with -1 if no drop, otherwise the ball id
+        
+        # if drop_mask.any():
+        #     ball_id = self.drop_events[drop_mask] 
+
+        #     peak = self.ball_peak_height[drop_mask, ball_id]
+        #     drop_pos = self.ball_drop_pos[drop_mask, ball_id]
+
+        #     # height Gaussian
+        #     Gh = torch.exp(- (peak - target_hand)**2 / (2 * self.sigma_h**2))
+
+        #     target_hand_pos TODO
+        #     dist = torch.norm(drop_pos - target_hand_pos, dim=-1)
+        #     Gd = torch.exp(- (dist)**2 / (2 * self.sigma_d**2))
+
+
+        #     reward[drop_mask] += self.w_drop * Gh * Gd
+
+        #     # distance from dropped ball to the intended catch hand
+        #     target_hand_pos = 
+
+
+        ###################
+        # rythem reward   #
+        ###################
+
+        throw_max = self.throw_events >= 0 # TODO, define throw events, happens when the ball y coordinate exceeds the min_throw_height variable defined in cfg.
+        if throw_max.any():
+            # TODO delta t = time since last throw for the same hand
+            # 
+
+            # GT = torch.exp(- (delta_t - self.t_target)**2 / (2 * self.sigma_t**2))
+            # reward[throw_max] += self.w_rythem * GT
+
+        self.prev_actions = actions.clone()
+        return reward
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         self.joint_pos = self.left_hand.data.joint_pos
@@ -279,6 +396,7 @@ def compute_rewards(
     reset_terminated: torch.Tensor,
 ):
     num_envs = self.num_envs
+    device = self.device
     ball_pos = self.ball_pos
     ball_vel = self.ball_vel
     hand_pos = self.hand_pos
