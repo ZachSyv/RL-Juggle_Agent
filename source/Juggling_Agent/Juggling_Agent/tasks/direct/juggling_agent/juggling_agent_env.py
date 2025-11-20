@@ -144,7 +144,7 @@ class JugglingAgentEnv(DirectRLEnv):
         for ball in range(self.cfg.num_balls):
             dist_to_hands = torch.norm(
                 self.ball_pos[:, ball].unsqueeze(1) - self.hand_pos, dim=-1
-            )  # unsqueeze ball position to (num_envs, 1, 3) for broadcasting
+            )  # single ball pos has dim (num_env, 3). unsqueeze ball position to (num_envs, 1, 3) for broadcasting
 
             caught_L = (dist_to_hands[:, 0] < self.catch_radius)
             caught_R = (dist_to_hands[:, 1] < self.catch_radius)
@@ -224,11 +224,21 @@ class JugglingAgentEnv(DirectRLEnv):
         # hoarding penalty#
         ###################
 
-        # calculate if the ball is in the hand, use the catch_radius variable TODO
+        # calculate if the ball is in the hand, use the catch_radius variable
         # should only be calculated after 1 second has passed to allow for initial positioning
         
+        # in_hand = torch.zeros((num_envs, self.cfg.num_balls, self.cfg.num_hands), device=device, dtype=torch.bool)
+        # for ball in range(self.cfg.num_balls):
+        #     for hand in range(self.cfg.num_hands):
+        #         distance_to_hand = torch.norm(
+        #             ball_pos[:, ball] - hand_pos[:, hand],
+        #             dim=-1
+        #         )
+        #         in_hand[:, ball, hand] = distance_to_hand < self.catch_radius
+        
+        # I belive this works the same as the above nested loop, but takes advantage of tensor broadcasting to make it much faster
         in_hand = (
-            torch.norm(
+            torch.norm( # broadcasts the num balls and num hands dimensions, then subtracts to get the distance between each ball and each hand
                 ball_pos.unsqueeze(2) - hand_pos.unsqueeze(1), # unsqueeze for broadcasting, unsqueeze ball_pos from (num_envs, num_balls, 3) to (num_envs, num_balls, 1, 3), unsqueeze hand_pos from (num_envs, num_hands, 3) to (num_envs, 1, num_hands, 3)
                 dim=-1
             ) < self.catch_radius
@@ -319,13 +329,12 @@ class JugglingAgentEnv(DirectRLEnv):
         # rythem reward   #
         ###################
 
-        throw_max = self.throw_events >= 0 # TODO, define throw events, happens when the ball y coordinate exceeds the min_throw_height variable defined in cfg.
+        throw_max = self.throw_events >= 0
         if throw_max.any():
-            # TODO delta t = time since last throw for the same hand
-            # 
-
-            # GT = torch.exp(- (delta_t - self.t_target)**2 / (2 * self.sigma_t**2))
-            # reward[throw_max] += self.w_rythem * GT
+            # delta t = time since last throw for the same hand
+            delta_t = self.throw_intervals[throw_max]
+            GT = torch.exp(- (delta_t - self.t_target)**2 / (2 * self.sigma_t**2))
+            reward[throw_max] += self.w_rythem * GT
 
         self.prev_actions = actions.clone()
         return reward
