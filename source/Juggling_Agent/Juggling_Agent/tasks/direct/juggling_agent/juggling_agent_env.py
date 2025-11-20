@@ -225,7 +225,7 @@ class JugglingAgentEnv(DirectRLEnv):
         ###################
 
         # calculate if the ball is in the hand, use the catch_radius variable
-        # should only be calculated after 1 second has passed to allow for initial positioning
+        # should only be calculated after 1 second has passed to allow for initial positioning TODO
         
         # in_hand = torch.zeros((num_envs, self.cfg.num_balls, self.cfg.num_hands), device=device, dtype=torch.bool)
         # for ball in range(self.cfg.num_balls):
@@ -280,7 +280,7 @@ class JugglingAgentEnv(DirectRLEnv):
             peak = self.ball_peak_height[catch_mask, ball_id]
 
             # height Gaussian
-            Gh = torch.exp(- (peak - self.h_target)**2 / (2 * self.sigma_h**2))
+            Gh = torch.exp(- (peak - self.target_height)**2 / (2 * self.sigma_h**2))
 
             # hand indices
             # need to define ball_throw_hand and ball_catch_hand TODO
@@ -288,10 +288,10 @@ class JugglingAgentEnv(DirectRLEnv):
             catch_hand = self.ball_catch_hand[catch_mask, ball_id]   # 0 or 1
                 
             cross = torch.where(
-            throw_hand != catch_hand,
-            torch.tensor(1.0, device=self.device),
-            torch.tensor(-0.5, device=self.device)
-        )
+                throw_hand != catch_hand,
+                torch.tensor(1.0, device=self.device),
+                torch.tensor(-0.5, device=self.device)
+            )
 
         reward[catch_mask] += self.w_catch * Gh * cross
 
@@ -300,28 +300,22 @@ class JugglingAgentEnv(DirectRLEnv):
         ###################
 
         # only added on drop event
-        # TODO
-        drop_mask = self.drop_events >= 0 # TODO, define drop events, happens when the ball y coordinate hits the ground (the ground_height variable defined in cfg). 
-        #Also should be a tensor of shape (num_envs,) with -1 if no drop, otherwise the ball id
-        
-        # if drop_mask.any():
-        #     ball_id = self.drop_events[drop_mask] 
+        drop_mask = self.drop_events >= 0
+        if drop_mask.any():
+            ball_id = self.drop_events[drop_mask] 
 
-        #     peak = self.ball_peak_height[drop_mask, ball_id]
-        #     drop_pos = self.ball_drop_pos[drop_mask, ball_id]
+            peak = self.ball_peak_height[drop_mask, ball_id]
+            drop_pos = self.ball_drop_pos[drop_mask, ball_id]
 
-        #     # height Gaussian
-        #     Gh = torch.exp(- (peak - target_hand)**2 / (2 * self.sigma_h**2))
+            # height gaussian
+            Gh = torch.exp(- (peak - self.target_height)**2 / (2 * self.sigma_h**2))
 
-        #     target_hand_pos TODO
-        #     dist = torch.norm(drop_pos - target_hand_pos, dim=-1)
-        #     Gd = torch.exp(- (dist)**2 / (2 * self.sigma_d**2))
+            # distance gaussian to target hand
+            target_hand_pos = self.ball_target_hand_pos[drop_mask]
+            dist = torch.norm(drop_pos - target_hand_pos, dim=-1)
+            Gd = torch.exp(- (dist)**2 / (2 * self.sigma_d**2))
 
-
-        #     reward[drop_mask] += self.w_drop * Gh * Gd
-
-        #     # distance from dropped ball to the intended catch hand
-        #     target_hand_pos = 
+            reward[drop_mask] += self.w_drop * Gh * Gd
 
 
         ###################
