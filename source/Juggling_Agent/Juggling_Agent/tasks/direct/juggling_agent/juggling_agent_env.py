@@ -252,6 +252,7 @@ class JugglingAgentEnv(DirectRLEnv):
         ###################
         # highest ball reward # TODO
         ###################
+        # reward the height of only the higest ball up to a specified apex defined in the cfg file
 
 
         ###################
@@ -262,7 +263,6 @@ class JugglingAgentEnv(DirectRLEnv):
         # two parts here, get the max height of the caught ball
         #                 check if the ball is caught by the opposite hand
 
-        # TODO, define catch events, it should be a tensor of shape (num_envs,) with -1 if no catch, otherwise the ball id
         catch_mask = self.catch_events >= 0
         if catch_mask.any():
 
