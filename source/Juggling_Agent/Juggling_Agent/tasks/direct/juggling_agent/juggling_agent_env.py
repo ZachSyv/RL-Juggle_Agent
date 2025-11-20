@@ -262,8 +262,26 @@ class JugglingAgentEnv(DirectRLEnv):
         ###################
         # highest ball reward # TODO
         ###################
+        # always applied
         # reward the height of only the higest ball up to a specified apex defined in the cfg file
+        height_cords = ball_pos[:, :, 2]  
+        vertical_velocities = ball_vel[:, :, 2]
 
+        up_mask = vertical_velocities > self.min_vertical_velocity
+        one_going_up = (up_mask.sum(dim=1) == 1)  # only one ball is going up
+        index_going_up = torch.argmax(up_mask.float(), dim=1)
+
+        # check to see if the ball going up is in the air (not in hand)
+        batch_ids = torch.arange(num_envs, device=device)
+
+        hight_cords_up = height_cords[batch_ids, index_going_up]
+        above_min = hight_cords_up > self.min_throw_height
+
+        # Use clip for height reward, should be nicer for early lerning but maybe switch to Gaussian if not working well?
+        height_r = (height_cords_up - self.ground_height) / (self.target_height - self.ground_height)
+        height_r_norm = torch.clamp(height_r, 0.0, 1.0)
+
+        reward += self.w_highest * height_r_norm * one_going_up.float() * above_min.float()
 
         ###################
         # catch reward    #
