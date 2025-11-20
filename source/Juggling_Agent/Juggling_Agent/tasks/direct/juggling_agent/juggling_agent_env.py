@@ -82,7 +82,7 @@ class JugglingAgentEnv(DirectRLEnv):
     def _allocate_tensors(self):
 
         num_envs = self.num_envs
-        device = self.device
+        device = self.device #I think this is defined automatically in the parent class
 
         # Ball state tensors
         self.ball_pos = torch.zeros((num_envs, self.cfg.num_balls, 3), device=device) # 3 is for x,y,z
