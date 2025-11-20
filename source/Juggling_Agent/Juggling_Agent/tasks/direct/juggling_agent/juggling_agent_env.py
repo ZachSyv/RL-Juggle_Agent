@@ -50,6 +50,7 @@ class JugglingAgentEnv(DirectRLEnv):
         # add lights
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
+        # TODO add 3 balls
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self.actions = actions.clone()
@@ -58,6 +59,12 @@ class JugglingAgentEnv(DirectRLEnv):
         # self.left_hand.set_joint_effort_target(self.actions * 100, joint_ids=self.placeholder_idx1)
         # self.right_hand.set_joint_effort_target(self.actions * 100, joint_ids=self.placeholder_idx1)
         []
+        # TODO
+        # apply the actions to both hands
+        # self.left_hand.apply_action(...)
+        # self.right_hand.apply_action(...)
+
+    # do we need a post physics step to update ball and hand positions? TODO?
 
     
     def _allocate_tensors(self):
