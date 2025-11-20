@@ -141,27 +141,45 @@ class JugglingAgentEnv(DirectRLEnv):
         ###############
         # Detect catch #
         ###############
-        #for ball in range(self.cfg.num_balls):
-            # Check if ball is caught TODO
+        for ball in range(self.cfg.num_balls):
+            dist_to_hands = torch.norm(
+                self.ball_pos[:, ball].unsqueeze(1) - self.hand_pos, dim=-1
+            )  # unsqueeze ball position to (num_envs, 1, 3) for broadcasting
 
-            # caught_L = ... TODO
-            # caught_R = ... TODO
+            caught_L = (dist_to_hands[:, 0] < self.catch_radius)
+            caught_R = (dist_to_hands[:, 1] < self.catch_radius)
 
-            # catch_mask = caught_L | caught_R
-            # if catch_mask.any():
-                # self.catch_events[catch_mask] = ball
-                # self.ball_catch_hand[catch_mask, ball] = torch.where(
-                #     caught_L[catch_mask], # 0 for left hand, 1 for right hand
-                #     torch.tensor(0, device=self.device),
-                #     torch.tensor(1, device=self.device)
-                # )
+            catch_mask = caught_L | caught_R
+            if catch_mask.any():
+                self.catch_events[catch_mask] = ball
+                self.ball_catch_hand[catch_mask, ball] = torch.where(
+                    caught_L[catch_mask], # 0 for left hand, 1 for right hand
+                    torch.tensor(0, device=self.device),
+                    torch.tensor(1, device=self.device)
+                )
 
         ###############
         # Detect throw #
         ###############
-        #for ball in range(self.cfg.num_balls): TODO
+        for ball in range(self.cfg.num_balls):
+            was_in_hand = self.prev_in_hand[:, ball]
+            is_in_hand_now = (
+                (torch.norm(self.ball_pos[:, ball] - self.hand_pos[:, 0], dim=-1) < self.catch_radius) | # in left hand
+                (torch.norm(self.ball_pos[:, ball] - self.hand_pos[:, 1], dim=-1) < self.catch_radius)   # in right hand
+            )
+            throw_mask = was_in_hand & (~is_in_hand_now) # ~ is logical NOT for torch tensors
+            if throw_mask.any():
+                self.throw_events[throw_mask] = ball
+                hand_L_position = (torch.norm( # check if the ball was in left hand, otherwise it was in right hand but we don't need to check that again because we already know it was in a hand
+                    self.ball_pos[:, ball] - self.hand_pos[:, 0], dim=-1
+                ) < self.catch_radius)
 
-
+                self.ball_throw_hand[throw_mask, ball] = torch.where( # 0 for left hand, 1 for right hand
+                    hand_L_position[throw_mask],
+                    torch.zeros_like(hand_L_position[throw_mask], device=self.device, dtype=torch.long),
+                    torch.ones_like(hand_L_position[throw_mask], device=self.device, dtype=torch.long),
+                )
+        
         # update prev_in_hand, we need to know if the ball was in hand in the previous step to detect throw events
         self.prev_in_hand = torch.zeros((self.num_envs, self.cfg.num_balls), device=self.device, dtype=torch.bool)
         for ball in range(self.cfg.num_balls):
