@@ -209,7 +209,7 @@ class JugglingAgentEnv(DirectRLEnv):
         #     self.reset_terminated,
         # )
         # return total_reward
-        
+
         num_envs = self.num_envs
         device = self.device
         ball_pos = self.ball_pos
@@ -227,13 +227,16 @@ class JugglingAgentEnv(DirectRLEnv):
         # calculate if the ball is in the hand, use the catch_radius variable TODO
         # should only be calculated after 1 second has passed to allow for initial positioning
         
-        # might be this?
-        #in_hand = (ball_pos - hand_pos) < self.catch_radius
+        in_hand = (
+            torch.norm(
+                ball_pos.unsqueeze(2) - hand_pos.unsqueeze(1), # unsqueeze for broadcasting, unsqueeze ball_pos from (num_envs, num_balls, 3) to (num_envs, num_balls, 1, 3), unsqueeze hand_pos from (num_envs, num_hands, 3) to (num_envs, 1, num_hands, 3)
+                dim=-1
+            ) < self.catch_radius
+        ) 
 
-        # balls_in_L =
-        # balls_in_R =
+        balls_in_L = in_hand[:, :, 0].sum(dim=1)
+        balls_in_R = in_hand[:, :, 1].sum(dim=1)
 
-        # this part is finished
         hoarding = (balls_in_L > 1) | (balls_in_R > 1)
         reward += -self.w_hoarding * hoarding.float()
 
