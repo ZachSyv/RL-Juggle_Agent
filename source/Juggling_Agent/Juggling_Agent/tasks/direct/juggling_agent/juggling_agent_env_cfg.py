@@ -104,6 +104,10 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=4.0, replicate_physics=True)
 
+    num_balls = 3
+    num_hands = 2
+    # do we need to add ball attributes here?
+
     # reward weights
     w_hoarding = 2.0        # should be high to strongly discourage hoarding 2 balls in one hand
     w_jitter = 0.001        # should be low to not overly discourage small adjustments, this is to prevent random drifting
@@ -124,4 +128,3 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     sigma_apex_height = 0.1
     min_throw_height = 0.2 # minimum height a ball must reach to be considered a valid throw, done to prevent micro-throws
     min_vertical_velocity = 0.1 # minimum vertical velocity at throw time to be considered a valid throw
-    

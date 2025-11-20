@@ -29,12 +29,19 @@ class JugglingAgentEnv(DirectRLEnv):
         self.placeholder_idx1 = [0]
         self.placeholder_idx2 = [1]
 
-        self.joint_pos = torch.zeros([2048, 26], device="cuda:0")
-        self.joint_vel = torch.zeros([2048, 26], device="cuda:0")
+        # self.joint_pos = torch.zeros([2048, 26], device="cuda:0")
+        # self.joint_vel = torch.zeros([2048, 26], device="cuda:0")
+        
+        # I think setup scene is already called in the super init so this should be fine
+        device = self.device
 
+        self.joint_pos = torch.zeros([self.num_envs, 26], device=device)
+        self.joint_vel = torch.zeros([self.num_envs, 26], device=device)
+        
         # import pdb; pdb.set_trace()
 
     def _setup_scene(self):
+        device = self.device
         self.left_hand = Articulation(self.cfg.left_hand_cfg)
         self.right_hand = Articulation(self.cfg.right_hand_cfg)
         # add ground plane
@@ -50,6 +57,11 @@ class JugglingAgentEnv(DirectRLEnv):
         # add lights
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
+
+        self.action_dim = self.left_hand.action_dim + self.right_hand.action_dim
+        self.actions = torch.zeros((self.num_envs, self.action_dim), device=device)
+        self.prev_actions = torch.zeros((self.num_envs, self.action_dim), device=device)
+
         # TODO add 3 balls
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
@@ -79,12 +91,6 @@ class JugglingAgentEnv(DirectRLEnv):
         # Hand state tensors
         self.hand_pos = torch.zeros((num_envs, self.cfg.num_hands, 3), device=device)
 
-
-        # Previous actions
-        #self.action_dim = ? TODO, find out the action dimension
-        self.actions = torch.zeros((num_envs, self.action_dim), device=device)
-        self.prev_actions = torch.zeros((num_envs, self.action_dim), device=device)
-
         # Event tracking tensors
         self.catch_events = torch.full((num_envs,), -1, device=device, dtype=torch.int32)  # -1 means no catch
         self.drop_events = torch.full((num_envs,), -1, device=device, dtype=torch.int32)   # -1 means no drop
@@ -107,6 +113,14 @@ class JugglingAgentEnv(DirectRLEnv):
         # throw rythem tracking, both hands share the same rythem timer. May want to change to be per-hand and add a offset for one hand
         self.throw_last_time = torch.zeros(num_envs, device=device)
         self.throw_intervals = torch.zeros(num_envs, device=device)
+
+        # TODO initial ball positions
+
+    def compute_target_hand_position(self, mask, ball_id):
+        # Simple rule: ball should go to opposite hand from throw
+        throw_hand = self.ball_throw_hand[mask, ball_id]
+        opposite = 1 - throw_hand # 0 is left hand, 1 is right hand, so 1-throw_hand gives opposite hand index
+        return self.hand_pos[mask, opposite]
 
     def _get_observations(self) -> dict:
         # obs = torch.cat(
@@ -135,15 +149,19 @@ class JugglingAgentEnv(DirectRLEnv):
         self.throw_events[:] = -1
 
         ###############
-        # Detect drop # TODO
+        # Detect drop #
         ###############
+
+        ball_height_pos = self.ball_pos[:, :, 2]  
+        dropped = ball_height_pos < self.cfg.ground_height + 0.01  # small buffer to avoid numerical issues, may need tuning
         
-        #for ball in range(self.cfg.num_balls):
-            # Check if ball has hit the ground
-            # if so,
-                # self.drop_events = ball id
-                # self.ball_drop_pos = current ball position
-                # self.ball_target_hand_pos = position of the intended catch hand
+        for ball in range(self.cfg.num_balls):
+            dropped_mask = dropped[:, ball]
+            if dropped_mask.any():
+                self.drop_events[dropped_mask] = ball
+                self.ball_drop_pos[dropped_mask, ball] = self.ball_pos[dropped_mask, ball]
+                self.ball_target_hand_pos[dropped_mask] = self.compute_target_hand_position(dropped_mask, ball)
+
 
         ###############
         # Detect catch #
@@ -153,8 +171,8 @@ class JugglingAgentEnv(DirectRLEnv):
                 self.ball_pos[:, ball].unsqueeze(1) - self.hand_pos, dim=-1
             )  # single ball pos has dim (num_env, 3). unsqueeze ball position to (num_envs, 1, 3) for broadcasting
 
-            caught_L = (dist_to_hands[:, 0] < self.catch_radius)
-            caught_R = (dist_to_hands[:, 1] < self.catch_radius)
+            caught_L = (dist_to_hands[:, 0] < self.cfg.catch_radius)
+            caught_R = (dist_to_hands[:, 1] < self.cfg.catch_radius)
 
             catch_mask = caught_L | caught_R
             if catch_mask.any():
@@ -171,15 +189,15 @@ class JugglingAgentEnv(DirectRLEnv):
         for ball in range(self.cfg.num_balls):
             was_in_hand = self.prev_in_hand[:, ball]
             is_in_hand_now = (
-                (torch.norm(self.ball_pos[:, ball] - self.hand_pos[:, 0], dim=-1) < self.catch_radius) | # in left hand
-                (torch.norm(self.ball_pos[:, ball] - self.hand_pos[:, 1], dim=-1) < self.catch_radius)   # in right hand
+                (torch.norm(self.ball_pos[:, ball] - self.hand_pos[:, 0], dim=-1) < self.cfg.catch_radius) | # in left hand
+                (torch.norm(self.ball_pos[:, ball] - self.hand_pos[:, 1], dim=-1) < self.cfg.catch_radius)   # in right hand
             )
             throw_mask = was_in_hand & (~is_in_hand_now) # ~ is logical NOT for torch tensors
             if throw_mask.any():
                 self.throw_events[throw_mask] = ball
                 hand_L_position = (torch.norm( # check if the ball was in left hand, otherwise it was in right hand but we don't need to check that again because we already know it was in a hand
                     self.ball_pos[:, ball] - self.hand_pos[:, 0], dim=-1
-                ) < self.catch_radius)
+                ) < self.cfg.catch_radius)
 
                 self.ball_throw_hand[throw_mask, ball] = torch.where( # 0 for left hand, 1 for right hand
                     hand_L_position[throw_mask],
@@ -191,8 +209,8 @@ class JugglingAgentEnv(DirectRLEnv):
         self.prev_in_hand = torch.zeros((self.num_envs, self.cfg.num_balls), device=self.device, dtype=torch.bool)
         for ball in range(self.cfg.num_balls):
             self.prev_in_hand[:, ball] = (
-                (torch.norm(self.ball_pos[:, ball] - self.hand_pos[:, 0], dim=-1) < self.catch_radius) | 
-                (torch.norm(self.ball_pos[:, ball] - self.hand_pos[:, 1], dim=-1) < self.catch_radius)
+                (torch.norm(self.ball_pos[:, ball] - self.hand_pos[:, 0], dim=-1) < self.cfg.catch_radius) | 
+                (torch.norm(self.ball_pos[:, ball] - self.hand_pos[:, 1], dim=-1) < self.cfg.catch_radius)
             )
 
         #######################
@@ -244,18 +262,20 @@ class JugglingAgentEnv(DirectRLEnv):
         #         in_hand[:, ball, hand] = distance_to_hand < self.catch_radius
         
         # I belive this works the same as the above nested loop, but takes advantage of tensor broadcasting to make it much faster
+        
+        #if self.episode_length_buf > ?  TODO, only start applying hoarding penalty after 1 second, need to figure out hz first 
         in_hand = (
             torch.norm( # broadcasts the num balls and num hands dimensions, then subtracts to get the distance between each ball and each hand
                 ball_pos.unsqueeze(2) - hand_pos.unsqueeze(1), # unsqueeze for broadcasting, unsqueeze ball_pos from (num_envs, num_balls, 3) to (num_envs, num_balls, 1, 3), unsqueeze hand_pos from (num_envs, num_hands, 3) to (num_envs, 1, num_hands, 3)
                 dim=-1
-            ) < self.catch_radius
+            ) < self.cfg.catch_radius
         ) 
 
         balls_in_L = in_hand[:, :, 0].sum(dim=1)
         balls_in_R = in_hand[:, :, 1].sum(dim=1)
 
         hoarding = (balls_in_L > 1) | (balls_in_R > 1)
-        reward += -self.w_hoarding * hoarding.float()
+        reward += -self.cfg.w_hoarding * hoarding.float()
 
         ###################
         # jitter penalty  #
@@ -263,7 +283,7 @@ class JugglingAgentEnv(DirectRLEnv):
 
         delta_a = actions - prev_actions
         jitter = torch.sum(delta_a**2, dim=-1)
-        reward += -self.w_jitter * jitter
+        reward += -self.cfg.w_jitter * jitter
 
 
         ###################
@@ -274,21 +294,21 @@ class JugglingAgentEnv(DirectRLEnv):
         height_cords = ball_pos[:, :, 2]  
         vertical_velocities = ball_vel[:, :, 2]
 
-        up_mask = vertical_velocities > self.min_vertical_velocity
+        up_mask = vertical_velocities > self.cfg.min_vertical_velocity
         one_going_up = (up_mask.sum(dim=1) == 1)  # only one ball is going up
         index_going_up = torch.argmax(up_mask.float(), dim=1)
 
         # check to see if the ball going up is in the air (not in hand)
         batch_ids = torch.arange(num_envs, device=device)
 
-        hight_cords_up = height_cords[batch_ids, index_going_up]
-        above_min = hight_cords_up > self.min_throw_height
+        height_cords_up = height_cords[batch_ids, index_going_up]
+        above_min = height_cords_up > self.cfg.min_throw_height
 
         # Use clip for height reward, should be nicer for early lerning but maybe switch to Gaussian if not working well?
-        height_r = (height_cords_up - self.ground_height) / (self.target_height - self.ground_height)
+        height_r = (height_cords_up - self.cfg.ground_height) / (self.cfg.target_height - self.cfg.ground_height)
         height_r_norm = torch.clamp(height_r, 0.0, 1.0)
 
-        reward += self.w_highest * height_r_norm * one_going_up.float() * above_min.float()
+        reward += self.cfg.w_highest * height_r_norm * one_going_up.float() * above_min.float()
 
         ###################
         # catch reward    #
@@ -301,24 +321,24 @@ class JugglingAgentEnv(DirectRLEnv):
         catch_mask = self.catch_events >= 0
         if catch_mask.any():
 
-            ball_id = self.catch_events[catch_mask] 
-            peak = self.ball_peak_height[catch_mask, ball_id]
+            batch = catch_mask.nonzero(as_tuple=True)[0]
+            ball_id = self.catch_events[batch] 
+            peak = self.ball_peak_height[batch, ball_id]
 
             # height Gaussian
-            Gh = torch.exp(- (peak - self.target_height)**2 / (2 * self.sigma_h**2))
+            Gh = torch.exp(- (peak - self.cfg.target_height)**2 / (2 * self.cfg.sigma_apex_height**2))
 
             # hand indices
-            # need to define ball_throw_hand and ball_catch_hand TODO
-            throw_hand = self.ball_throw_hand[catch_mask, ball_id]   # 0 or 1
-            catch_hand = self.ball_catch_hand[catch_mask, ball_id]   # 0 or 1
+            throw_hand = self.ball_throw_hand[batch, ball_id]
+            catch_hand = self.ball_catch_hand[batch, ball_id]
                 
             cross = torch.where(
                 throw_hand != catch_hand,
                 torch.tensor(1.0, device=self.device),
-                torch.tensor(-0.5, device=self.device)
+                torch.tensor(-0.25, device=self.device) # adjust penalty for same hand catch, may inhibit learning
             )
 
-        reward[catch_mask] += self.w_catch * Gh * cross
+            reward[catch_mask] += self.cfg.w_catch * Gh * cross
 
         ###################
         # drop reward  #
@@ -327,20 +347,21 @@ class JugglingAgentEnv(DirectRLEnv):
         # only added on drop event
         drop_mask = self.drop_events >= 0
         if drop_mask.any():
-            ball_id = self.drop_events[drop_mask] 
+            batch = drop_mask.nonzero(as_tuple=True)[0]
+            ball_id = self.drop_events[batch] 
 
-            peak = self.ball_peak_height[drop_mask, ball_id]
-            drop_pos = self.ball_drop_pos[drop_mask, ball_id]
+            peak = self.ball_peak_height[batch, ball_id]
+            drop_pos = self.ball_drop_pos[batch, ball_id]
 
             # height gaussian
-            Gh = torch.exp(- (peak - self.target_height)**2 / (2 * self.sigma_h**2))
+            Gh = torch.exp(- (peak - self.cfg.target_height)**2 / (2 * self.cfg.sigma_apex_height**2))
 
             # distance gaussian to target hand
-            target_hand_pos = self.ball_target_hand_pos[drop_mask]
+            target_hand_pos = self.compute_target_hand_position(batch, ball_id)
             dist = torch.norm(drop_pos - target_hand_pos, dim=-1)
-            Gd = torch.exp(- (dist)**2 / (2 * self.sigma_d**2))
+            Gd = torch.exp(- (dist)**2 / (2 * self.cfg.sigma_drop_distance**2))
 
-            reward[drop_mask] += self.w_drop * Gh * Gd
+            reward[drop_mask] += self.cfg.w_drop * Gh * Gd
 
 
         ###################
@@ -350,9 +371,9 @@ class JugglingAgentEnv(DirectRLEnv):
         throw_max = self.throw_events >= 0
         if throw_max.any():
             # delta t = time since last throw for the same hand
-            delta_t = self.throw_intervals[throw_max]
-            GT = torch.exp(- (delta_t - self.t_target)**2 / (2 * self.sigma_t**2))
-            reward[throw_max] += self.w_rythem * GT
+            delta_t = self.throw_intervals[throw_max] # TODO, need to actually track this variable properly
+            GT = torch.exp(- (delta_t - self.cfg.target_rythem)**2 / (2 * self.cfg.sigma_rythem**2))
+            reward[throw_max] += self.cfg.w_rythem * GT
 
 
         self.prev_actions = actions.clone()
@@ -395,7 +416,7 @@ class JugglingAgentEnv(DirectRLEnv):
         env_ids = env_ids.to(self.device)
 
         # Reset positions of balls
-        self.ball_pos[env_ids] = self.initial_ball_positions[env_ids]
+        #self.ball_pos[env_ids] = TODO
         self.ball_vel[env_ids] = 0
         self.ball_peak_height[env_ids] = 0
 
