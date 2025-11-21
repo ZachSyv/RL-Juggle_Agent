@@ -155,72 +155,127 @@ class JugglingAgentEnv(DirectRLEnv):
         ball_height_pos = self.ball_pos[:, :, 2]  
         dropped = ball_height_pos < self.cfg.ground_height + 0.01  # small buffer to avoid numerical issues, may need tuning
         
-        for ball in range(self.cfg.num_balls):
-            dropped_mask = dropped[:, ball]
-            if dropped_mask.any():
-                self.drop_events[dropped_mask] = ball
-                self.ball_drop_pos[dropped_mask, ball] = self.ball_pos[dropped_mask, ball]
-                self.ball_target_hand_pos[dropped_mask] = self.compute_target_hand_position(dropped_mask, ball)
+        # for ball in range(self.cfg.num_balls):
+        #     dropped_mask = dropped[:, ball]
+        #     if dropped_mask.any():
+        #         self.drop_events[dropped_mask] = ball
+        #         self.ball_drop_pos[dropped_mask, ball] = self.ball_pos[dropped_mask, ball]
+        #         self.ball_target_hand_pos[dropped_mask] = self.compute_target_hand_position(dropped_mask, ball)
+        
+        # I think this does the same as the above loop but faster using tensor operations
+        env_dropped = dropped.any(dim=1)
+
+        if env_dropped.any()
+            env_dropped_ids = env_dropped.nonzero(as_tuple=True)[0]
+            dropped_ball_ids = dropped[env_dropped_ids].float().argmax(dim=1)
+            self.drop_events[env_dropped] = dropped_ball_ids[env_dropped]
+            self.ball_drop_pos[env_dropped] = self.ball_pos[env_dropped, dropped_ball_ids[env_dropped]]
+            self.ball_target_hand_pos[env_dropped] = self.compute_target_hand_position(env_dropped, dropped_ball_ids[env_dropped])
 
 
         ###############
         # Detect catch #
         ###############
-        for ball in range(self.cfg.num_balls):
-            dist_to_hands = torch.norm(
-                self.ball_pos[:, ball].unsqueeze(1) - self.hand_pos, dim=-1
-            )  # single ball pos has dim (num_env, 3). unsqueeze ball position to (num_envs, 1, 3) for broadcasting
+        # for ball in range(self.cfg.num_balls):
+        #     dist_to_hands = torch.norm(
+        #         self.ball_pos[:, ball].unsqueeze(1) - self.hand_pos, dim=-1
+        #     )  # single ball pos has dim (num_env, 3). unsqueeze ball position to (num_envs, 1, 3) for broadcasting
 
-            caught_L = (dist_to_hands[:, 0] < self.cfg.catch_radius)
-            caught_R = (dist_to_hands[:, 1] < self.cfg.catch_radius)
+        #     caught_L = (dist_to_hands[:, 0] < self.cfg.catch_radius)
+        #     caught_R = (dist_to_hands[:, 1] < self.cfg.catch_radius)
 
-            catch_mask = caught_L | caught_R
-            if catch_mask.any():
-                self.catch_events[catch_mask] = ball
-                self.ball_catch_hand[catch_mask, ball] = torch.where(
-                    caught_L[catch_mask], # 0 for left hand, 1 for right hand
-                    torch.tensor(0, device=self.device),
-                    torch.tensor(1, device=self.device)
-                )
+        #     catch_mask = caught_L | caught_R
+        #     if catch_mask.any():
+        #         self.catch_events[catch_mask] = ball
+        #         self.ball_catch_hand[catch_mask, ball] = torch.where(
+        #             caught_L[catch_mask], # 0 for left hand, 1 for right hand
+        #             torch.tensor(0, device=self.device),
+        #             torch.tensor(1, device=self.device)
+        #         )
+
+        # I think this does the same as the above loop but faster using tensor operations
+        self.catch_events[:] = -1 # default to -1, no catch
+
+        caught = (torch.norm(
+            self.ball_pos.unsqueeze(2) - self.hand_pos.unsqueeze(1), # unsqueeze for broadcasting, unsqueeze ball_pos from (num_envs, num_balls, 3) to (num_envs, num_balls, 1, 3), unsqueeze hand_pos
+            dim=-1) < self.cfg.catch_radius)
+
+        balls_caught = caught.any(dim=2)  # shape (num_envs, num_balls)
+        envs_caught = balls_caught.any(dim=1)
+
+        if envs_caught.any():
+            env_caught_ids = envs_caught.nonzero(as_tuple=True)[0]
+            ball_caught_ids = balls_caught[env_caught_ids].float().argmax(dim=1)
+
+            self.catch_events[env_caught_ids] = ball_caught_ids
+
+            hand_caught = caught[env_caught_ids, ball_caught_ids]  
+            hand_idx = hand_caught.int().argmax(dim=1)  # 0 for left hand, 1 for right hand
+            self.ball_catch_hand[env_caught_ids, ball_caught_ids] = hand_idx
 
         ###############
         # Detect throw #
         ###############
-        for ball in range(self.cfg.num_balls):
-            was_in_hand = self.prev_in_hand[:, ball]
-            is_in_hand_now = (
-                (torch.norm(self.ball_pos[:, ball] - self.hand_pos[:, 0], dim=-1) < self.cfg.catch_radius) | # in left hand
-                (torch.norm(self.ball_pos[:, ball] - self.hand_pos[:, 1], dim=-1) < self.cfg.catch_radius)   # in right hand
-            )
-            throw_mask = was_in_hand & (~is_in_hand_now) # ~ is logical NOT for torch tensors
-            if throw_mask.any():
-                self.throw_events[throw_mask] = ball
-                hand_L_position = (torch.norm( # check if the ball was in left hand, otherwise it was in right hand but we don't need to check that again because we already know it was in a hand
-                    self.ball_pos[:, ball] - self.hand_pos[:, 0], dim=-1
-                ) < self.cfg.catch_radius)
+        # for ball in range(self.cfg.num_balls):
+        #     was_in_hand = self.prev_in_hand[:, ball]
+        #     is_in_hand_now = (
+        #         (torch.norm(self.ball_pos[:, ball] - self.hand_pos[:, 0], dim=-1) < self.cfg.catch_radius) | # in left hand
+        #         (torch.norm(self.ball_pos[:, ball] - self.hand_pos[:, 1], dim=-1) < self.cfg.catch_radius)   # in right hand
+        #     )
+        #     throw_mask = was_in_hand & (~is_in_hand_now) # ~ is logical NOT for torch tensors
+        #     if throw_mask.any():
+        #         self.throw_events[throw_mask] = ball
+        #         hand_L_position = (torch.norm( # check if the ball was in left hand, otherwise it was in right hand but we don't need to check that again because we already know it was in a hand
+        #             self.ball_pos[:, ball] - self.hand_pos[:, 0], dim=-1
+        #         ) < self.cfg.catch_radius)
 
-                self.ball_throw_hand[throw_mask, ball] = torch.where( # 0 for left hand, 1 for right hand
-                    hand_L_position[throw_mask],
-                    torch.zeros_like(hand_L_position[throw_mask], device=self.device, dtype=torch.long),
-                    torch.ones_like(hand_L_position[throw_mask], device=self.device, dtype=torch.long),
-                )
+        #         self.ball_throw_hand[throw_mask, ball] = torch.where( # 0 for left hand, 1 for right hand
+        #             hand_L_position[throw_mask],
+        #             torch.zeros_like(hand_L_position[throw_mask], device=self.device, dtype=torch.long),
+        #             torch.ones_like(hand_L_position[throw_mask], device=self.device, dtype=torch.long),
+        #         )
+
+        # I think this does the same as the above loop but faster using tensor operations
+        is_in_hand_now = caught # reuse caught tensor from above
+        any_in_hand_now = is_in_hand_now.any(dim=2)  # (num_envs, num_balls)
+        was_in_hand = self.prev_in_hand
+        throw_mask = was_in_hand & (~any_in_hand_now) # ~ is logical NOT for torch tensors
+        envs_with_throws = throw_mask.any(dim=1)
+        if envs_with_throws.any():
+            envs_with_throws_ids = envs_with_throws.nonzero(as_tuple=True)[0]
+            thrown_ball_ids = throw_mask[envs_with_throws_ids].float().argmax(dim=1)
+
+            self.throw_events[envs_with_throws_ids] = thrown_ball_ids
+
+            ball2hand_distances = torch.norm( # compute the distance from the ball to each hand to determine which hand threw the ball
+                self.ball_pos[envs_with_throws_ids, thrown_ball_ids].unsqueeze(1) - 
+                self.hand_pos[envs_with_throws_ids], 
+                dim=-1
+            )
+            throw_hand_ids = prev_dist.int().argmin(dim=1)
+            self.ball_throw_hand[envs_with_throws_ids, thrown_ball_ids] = throw_hand_ids
+
         
         # update prev_in_hand, we need to know if the ball was in hand in the previous step to detect throw events
-        self.prev_in_hand = torch.zeros((self.num_envs, self.cfg.num_balls), device=self.device, dtype=torch.bool)
-        for ball in range(self.cfg.num_balls):
-            self.prev_in_hand[:, ball] = (
-                (torch.norm(self.ball_pos[:, ball] - self.hand_pos[:, 0], dim=-1) < self.cfg.catch_radius) | 
-                (torch.norm(self.ball_pos[:, ball] - self.hand_pos[:, 1], dim=-1) < self.cfg.catch_radius)
-            )
+        # self.prev_in_hand = torch.zeros((self.num_envs, self.cfg.num_balls), device=self.device, dtype=torch.bool)
+        # for ball in range(self.cfg.num_balls):
+        #     self.prev_in_hand[:, ball] = (
+        #         (torch.norm(self.ball_pos[:, ball] - self.hand_pos[:, 0], dim=-1) < self.cfg.catch_radius) | 
+        #         (torch.norm(self.ball_pos[:, ball] - self.hand_pos[:, 1], dim=-1) < self.cfg.catch_radius)
+        #     )
+        # I think this does the same as the above loop but faster using tensor operations
+        self.prev_in_hand = any_in_hand_now # already computed above
 
         #######################
         # track peak heights #
         #######################
-        for ball in range(self.cfg.num_balls):
-            self.ball_peak_height[:, ball] = torch.max(
-                self.ball_peak_height[:, ball],
-                self.ball_pos[:, ball, 2]
-            )
+        # for ball in range(self.cfg.num_balls):
+        #     self.ball_peak_height[:, ball] = torch.max(
+        #         self.ball_peak_height[:, ball],
+        #         self.ball_pos[:, ball, 2]
+        #     )
+        # I think this does the same as the above loop but faster using tensor operations
+        self.ball_peak_height = torch.max(self.ball_peak_height, self.ball_pos[:, :, 2])
         
 
     def _get_rewards(self) -> torch.Tensor:
