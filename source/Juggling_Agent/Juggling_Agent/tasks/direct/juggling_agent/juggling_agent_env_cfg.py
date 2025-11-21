@@ -110,21 +110,22 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
 
     # reward weights
     w_hoarding = 2.0        # should be high to strongly discourage hoarding 2 balls in one hand
-    w_jitter = 0.001        # should be low to not overly discourage small adjustments, this is to prevent random drifting
+    w_jitter = 0.001        # should be low to not overly discourage small adjustments, this is to prevent random drifting. Continuously added
     w_highest = 0.03        # the highest ball, small becaues it's continuously added
     w_rythem = 0.2         # should be moderate to encourage consistent timing
     w_catch = 5.0          # should be high to strongly encourage successful catches
-    w_drop = 1.0           # should be moderate
+    w_drop = 1.0           # should be moderate, high enough to provide guidance on where the ball should be, but smaller than catch reward
 
     # geometric parameters
-    catch_radius = 0.1  # radius within which a catch is registered, this definitly needs to be configured before we start
+    catch_radius = 0.1  # radius from the hand to the ball which a catch is registered, this definitly needs to be configured before we start
     target_height = 0.5 # height at which the ball apex should be, this also definitly needs to be configured before we start
     target_rythem = 0.4 # 60/150 seconds per throw, i.e. 2.5 throws per second
-    ground_height = 0.0
+    ground_height = 0.0 # should be configured to be right below where the hands can reach
 
     # tolerances
     sigma_rythem = 0.05
     sigma_drop_distance = 0.2
     sigma_apex_height = 0.1
+    
     min_throw_height = 0.2 # minimum height a ball must reach to be considered a valid throw, done to prevent micro-throws
     min_vertical_velocity = 0.1 # minimum vertical velocity at throw time to be considered a valid throw
