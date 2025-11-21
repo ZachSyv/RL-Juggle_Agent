@@ -18,27 +18,36 @@ from isaaclab.utils.math import sample_uniform
 from .juggling_agent_env_cfg import JugglingAgentEnvCfg
 
 
+def assign_bias(bias, idx_list):
+    return [x + bias for x in idx_list]
+
+
 class JugglingAgentEnv(DirectRLEnv):
     cfg: JugglingAgentEnvCfg
 
     def __init__(self, cfg: JugglingAgentEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
-
-        # self._cart_dof_idx, _ = self.robot.find_joints(self.cfg.cart_dof_name)
-        # self._pole_dof_idx, _ = self.robot.find_joints(self.cfg.pole_dof_name)
-        self.placeholder_idx1 = [0]
-        self.placeholder_idx2 = [1]
-
-        # self.joint_pos = torch.zeros([2048, 26], device="cuda:0")
-        # self.joint_vel = torch.zeros([2048, 26], device="cuda:0")
-        
         # I think setup scene is already called in the super init so this should be fine
         device = self.device
 
-        self.joint_pos = torch.zeros([self.num_envs, 26], device=device)
-        self.joint_vel = torch.zeros([self.num_envs, 26], device=device)
-        
-        # import pdb; pdb.set_trace()
+        # import pdb;
+        # pdb.set_trace()
+
+        self.left_hand_idx, _ =  self.left_hand.find_joints(".*")
+        self.right_hand_idx, _ = self.right_hand.find_joints(".*")
+
+        # create bias for each obj
+        self.left_hand_bias = 0
+        self.right_hand_bias = len(self.left_hand_idx)
+
+        # assert self.cfg.action_space == len(self.left_hand_idx) + len(self.right_hand_idx), 'action dim mismatch'
+
+        self.action_dim = self.cfg.action_space
+        self.actions = torch.zeros((self.num_envs, self.action_dim), device=device)
+        self.prev_actions = torch.zeros((self.num_envs, self.action_dim), device=device)
+
+        self.joint_pos = torch.zeros([self.num_envs, self.action_dim], device=device)
+        self.joint_vel = torch.zeros([self.num_envs, self.action_dim], device=device)
 
     def _setup_scene(self):
         device = self.device
@@ -58,18 +67,16 @@ class JugglingAgentEnv(DirectRLEnv):
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
 
-        self.action_dim = self.left_hand.action_dim + self.right_hand.action_dim
-        self.actions = torch.zeros((self.num_envs, self.action_dim), device=device)
-        self.prev_actions = torch.zeros((self.num_envs, self.action_dim), device=device)
-
         # TODO add 3 balls
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self.actions = actions.clone()
 
     def _apply_action(self) -> None:
-        # self.left_hand.set_joint_effort_target(self.actions * 100, joint_ids=self.placeholder_idx1)
-        # self.right_hand.set_joint_effort_target(self.actions * 100, joint_ids=self.placeholder_idx1)
+        self.left_hand.set_joint_effort_target(
+            self.actions[:, assign_bias(self.left_hand_bias, self.left_hand_idx)] * 2, joint_ids=self.left_hand_idx)
+        self.right_hand.set_joint_effort_target(
+            self.actions[:, assign_bias(self.right_hand_bias, self.right_hand_idx)] * 2, joint_ids=self.right_hand_idx)
         []
         # TODO
         # apply the actions to both hands
@@ -123,23 +130,25 @@ class JugglingAgentEnv(DirectRLEnv):
         return self.hand_pos[mask, opposite]
 
     def _get_observations(self) -> dict:
-        # obs = torch.cat(
-        #     (
-        #         self.joint_pos[:, self.placeholder_idx2[0]].unsqueeze(dim=1),
-        #         self.joint_vel[:, self.placeholder_idx2[0]].unsqueeze(dim=1),
-        #         self.joint_pos[:, self.placeholder_idx1[0]].unsqueeze(dim=1),
-        #         self.joint_vel[:, self.placeholder_idx1[0]].unsqueeze(dim=1),
-        #     ),
-        #     dim=-1,
-        # )
+        # import pdb; pdb.set_trace()
+
         obs = torch.cat(
             (
-                self.hand_pos.reshape(self.num_envs, -1),
-                self.ball_pos.reshape(self.num_envs, -1),
-                self.ball_vel.reshape(self.num_envs, -1),
+                self.joint_pos[:, self.left_hand_idx],
+                self.joint_vel[:, self.left_hand_idx],
+                self.joint_pos[:, self.right_hand_idx],
+                self.joint_vel[:, self.right_hand_idx],
             ),
-            dim=1,
+            dim=-1,
         )
+        # obs = torch.cat(
+        #     (
+        #         self.hand_pos.reshape(self.num_envs, -1),
+        #         self.ball_pos.reshape(self.num_envs, -1),
+        #         self.ball_vel.reshape(self.num_envs, -1),
+        #     ),
+        #     dim=1,
+        # )
         observations = {"policy": obs}
         return observations
 
@@ -237,13 +246,15 @@ class JugglingAgentEnv(DirectRLEnv):
 
         num_envs = self.num_envs
         device = self.device
-        ball_pos = self.ball_pos
-        ball_vel = self.ball_vel
-        hand_pos = self.hand_pos
+        # ball_pos = self.ball_pos
+        # ball_vel = self.ball_vel
+        # hand_pos = self.hand_pos
         actions = self.actions
         prev_actions = self.prev_actions
 
         reward = torch.zeros(num_envs, device=self.device)
+
+        return reward
 
         ###################
         # hoarding penalty#
@@ -381,18 +392,19 @@ class JugglingAgentEnv(DirectRLEnv):
         return reward
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
-        self.joint_pos = self.left_hand.data.joint_pos
-        self.joint_vel = self.left_hand.data.joint_vel
+        self.joint_pos = torch.cat([self.left_hand.data.joint_pos, self.right_hand.data.joint_pos], dim=1)
+        self.joint_vel = torch.cat([self.left_hand.data.joint_vel, self.right_hand.data.joint_vel], dim=1)
 
         time_out = self.episode_length_buf >= self.max_episode_length - 1
-        out_of_bounds = torch.any(torch.abs(self.joint_pos[:, self.placeholder_idx1]) >= 0, dim=1)
-        out_of_bounds = out_of_bounds | torch.any(torch.abs(self.joint_pos[:, self.placeholder_idx2]) > math.pi / 2, dim=1)
+        out_of_bounds = torch.zeros(1, dtype=torch.bool)
+        # out_of_bounds = torch.any(torch.abs(self.joint_pos[:, self.placeholder_idx1]) >= 0, dim=1)
+        # out_of_bounds = out_of_bounds | torch.any(torch.abs(self.joint_pos[:, self.placeholder_idx2]) > math.pi / 2, dim=1)
         return out_of_bounds, time_out
 
     def _reset_idx(self, env_ids: Sequence[int] | None):
         # if env_ids is None:
         #     env_ids = self.left_hand._ALL_INDICES
-        # super()._reset_idx(env_ids)
+        super()._reset_idx(env_ids)
 
         # joint_pos = self.left_hand.data.default_joint_pos[env_ids]
         # joint_pos[:, self.placeholder_idx2] += sample_uniform(
@@ -413,27 +425,27 @@ class JugglingAgentEnv(DirectRLEnv):
         # self.left_hand.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
         # self.left_hand.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
         
-        env_ids = env_ids.to(self.device)
-
-        # Reset positions of balls
-        #self.ball_pos[env_ids] = TODO
-        self.ball_vel[env_ids] = 0
-        self.ball_peak_height[env_ids] = 0
-
-        # Reset tracking variables
-        self.catch_events[env_ids] = -1
-        self.drop_events[env_ids] = -1
-        self.throw_events[env_ids] = -1
-        self.prev_in_hand[env_ids] = False
-
-        self.prev_actions[env_ids] = 0
-        self.actions[env_ids] = 0
-
-        # Reset timers
-        self.throw_last_time[env_ids] = 0
-        self.throw_intervals[env_ids] = 0
-
-        return super().reset_idx(env_ids)
+        # env_ids = env_ids.to(self.device)
+        #
+        # # Reset positions of balls
+        # #self.ball_pos[env_ids] = TODO
+        # self.ball_vel[env_ids] = 0
+        # self.ball_peak_height[env_ids] = 0
+        #
+        # # Reset tracking variables
+        # self.catch_events[env_ids] = -1
+        # self.drop_events[env_ids] = -1
+        # self.throw_events[env_ids] = -1
+        # self.prev_in_hand[env_ids] = False
+        #
+        # self.prev_actions[env_ids] = 0
+        # self.actions[env_ids] = 0
+        #
+        # # Reset timers
+        # self.throw_last_time[env_ids] = 0
+        # self.throw_intervals[env_ids] = 0
+        #
+        # return super().reset_idx(env_ids)
 
 # I don't think we need this function anymore since the reward is computed inline
 # @torch.jit.script
