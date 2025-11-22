@@ -126,8 +126,6 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     target_rythem = 0.4 # 60/150 seconds per throw, i.e. 2.5 throws per second
     ground_height = 0.0 # should be configured to be right below where the hands can reach
 
-    distance_target2ground = 1.0 / (target_height - ground_height) # precalulate for efficiency
-
     # tolerances
     sigma_rythem = 0.05
     sigma_drop_distance = 0.2
