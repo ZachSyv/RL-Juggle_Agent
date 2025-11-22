@@ -89,7 +89,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
         allocate_tensors_fn = "_allocate_tensors"
 
     # - spaces definition
-    action_space = 1
+    action_space = 52
     observation_space = 4
     state_space = 0
 
