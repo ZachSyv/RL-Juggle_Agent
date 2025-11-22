@@ -84,6 +84,10 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     # env
     decimation = 2
     episode_length_s = 5.0
+
+    class env(DirectRLEnvCfg.env):
+        allocate_tensors_fn = "_allocate_tensors"
+
     # - spaces definition
     action_space = 1
     observation_space = 4
@@ -121,6 +125,8 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     target_height = 0.5 # height at which the ball apex should be, this also definitly needs to be configured before we start
     target_rythem = 0.4 # 60/150 seconds per throw, i.e. 2.5 throws per second
     ground_height = 0.0 # should be configured to be right below where the hands can reach
+
+    distance_target2ground = 1.0 / (target_height - ground_height) # precalulate for efficiency
 
     # tolerances
     sigma_rythem = 0.05
