@@ -92,9 +92,9 @@ class JugglingAgentEnv(DirectRLEnv):
         self.hand_pos = torch.zeros((num_envs, self.cfg.num_hands, 3), device=device)
 
         # Event tracking tensors
-        self.catch_events = torch.full((num_envs,), -1, device=device, dtype=torch.int32)  # -1 means no catch
-        self.drop_events = torch.full((num_envs,), -1, device=device, dtype=torch.int32)   # -1 means no drop
-        self.throw_events = torch.full((num_envs,), -1, device=device, dtype=torch.int32)  # -1 means no throw
+        self.catch_events = torch.full((num_envs,), -1, device=device, dtype=torch.int16)  # -1 means no catch
+        self.drop_events = torch.full((num_envs,), -1, device=device, dtype=torch.int16)   # -1 means no drop
+        self.throw_events = torch.full((num_envs,), -1, device=device, dtype=torch.int16)  # -1 means no throw
 
         # Height tracking tensors
         self.ball_peak_height = torch.zeros((num_envs, self.cfg.num_balls), device=device)
@@ -255,7 +255,7 @@ class JugglingAgentEnv(DirectRLEnv):
             throw_hand_ids = prev_dist.int().argmin(dim=1)
             self.ball_throw_hand[envs_with_throws_ids, thrown_ball_ids] = throw_hand_ids
 
-        
+
         # update prev_in_hand, we need to know if the ball was in hand in the previous step to detect throw events
         # self.prev_in_hand = torch.zeros((self.num_envs, self.cfg.num_balls), device=self.device, dtype=torch.bool)
         # for ball in range(self.cfg.num_balls):
@@ -360,7 +360,7 @@ class JugglingAgentEnv(DirectRLEnv):
         above_min = height_cords_up > self.cfg.min_throw_height
 
         # Use clip for height reward, should be nicer for early lerning but maybe switch to Gaussian if not working well?
-        height_r = (height_cords_up - self.cfg.ground_height) / (self.cfg.target_height - self.cfg.ground_height)
+        height_r = (height_cords_up - self.cfg.ground_height) * self.cfg.distance_target2ground
         height_r_norm = torch.clamp(height_r, 0.0, 1.0)
 
         reward += self.cfg.w_highest * height_r_norm * one_going_up.float() * above_min.float()
@@ -381,7 +381,7 @@ class JugglingAgentEnv(DirectRLEnv):
             peak = self.ball_peak_height[batch, ball_id]
 
             # height Gaussian
-            Gh = torch.exp(- (peak - self.cfg.target_height)**2 / (2 * self.cfg.sigma_apex_height**2))
+            Gh = torch.exp(- (peak - self.cfg.target_height).square() / (2 * self.cfg.sigma_apex_height.square()))
 
             # hand indices
             throw_hand = self.ball_throw_hand[batch, ball_id]
@@ -392,8 +392,8 @@ class JugglingAgentEnv(DirectRLEnv):
                 torch.tensor(1.0, device=self.device),
                 torch.tensor(-0.25, device=self.device) # adjust penalty for same hand catch, may inhibit learning
             )
-
-            reward[catch_mask] += self.cfg.w_catch * Gh * cross
+            catch_r = self.cfg.w_catch * Gh * cross
+            reward += catch_r * catch_mask.float()
 
         ###################
         # drop reward  #
@@ -409,14 +409,15 @@ class JugglingAgentEnv(DirectRLEnv):
             drop_pos = self.ball_drop_pos[batch, ball_id]
 
             # height gaussian
-            Gh = torch.exp(- (peak - self.cfg.target_height)**2 / (2 * self.cfg.sigma_apex_height**2))
+            Gh = torch.exp(- (peak - self.cfg.target_height).square() / (2 * self.cfg.sigma_apex_height.square()))
 
             # distance gaussian to target hand
             target_hand_pos = self.compute_target_hand_position(batch, ball_id)
             dist = torch.norm(drop_pos - target_hand_pos, dim=-1)
             Gd = torch.exp(- (dist)**2 / (2 * self.cfg.sigma_drop_distance**2))
 
-            reward[drop_mask] += self.cfg.w_drop * Gh * Gd
+            drop_r = self.cfg.w_drop * Gh * Gd
+            reward += drop_r * drop_mask.float()
 
 
         ###################
@@ -427,7 +428,7 @@ class JugglingAgentEnv(DirectRLEnv):
         if throw_max.any():
             # delta t = time since last throw for the same hand
             delta_t = self.throw_intervals[throw_max] # TODO, need to actually track this variable properly
-            GT = torch.exp(- (delta_t - self.cfg.target_rythem)**2 / (2 * self.cfg.sigma_rythem**2))
+            GT = torch.exp(- (delta_t - self.cfg.target_rythem).square() / (2 * self.cfg.sigma_rythem.square()))
             reward[throw_max] += self.cfg.w_rythem * GT
 
 
