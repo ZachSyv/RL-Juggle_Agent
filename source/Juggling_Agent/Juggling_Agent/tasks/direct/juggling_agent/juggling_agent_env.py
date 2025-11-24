@@ -326,6 +326,8 @@ class JugglingAgentEnv(DirectRLEnv):
         ###################
         # hoarding penalty#
         ###################
+        # if more than one ball is in a hand after the first second, apply a penalty. This is to prevent the agent from just holding onto balls instead of juggling them
+
 
         # calculate if the ball is in the hand, use the catch_radius variable
         # should only be calculated after 1 second has passed to allow for initial positioning TODO
@@ -343,6 +345,7 @@ class JugglingAgentEnv(DirectRLEnv):
         
         #if self.episode_length_buf > ?  TODO, only start applying hoarding penalty after 1 second, need to figure out hz first 
 
+        # in_hand is already computed in detect_events function
         balls_in_L = self.in_hand[:, :, 0].sum(dim=1)
         balls_in_R = self.in_hand[:, :, 1].sum(dim=1)
 
@@ -361,6 +364,8 @@ class JugglingAgentEnv(DirectRLEnv):
         #######################
         # highest ball reward #
         #######################
+        # a continuous reward that is applied every step based on the height of only the highest ball, and does not reward of multiple balls are up in the air. this is to encourage the agent to initially throw balls up
+
         # always applied
         # reward the height of only the higest ball up to a specified apex defined in the cfg file
         height_cords = ball_pos[:, :, 2]  
@@ -386,6 +391,7 @@ class JugglingAgentEnv(DirectRLEnv):
         ###################
         # catch reward    #
         ###################
+        # largest reward, applies a reward based on the max height of the ball that was just caught, and whether it was caught by the opposite hand
 
         # only added on catch event
         # two parts here, get the max height of the caught ball
@@ -413,13 +419,13 @@ class JugglingAgentEnv(DirectRLEnv):
         ###################
         # drop reward  #
         ###################
+        # a smaller reward designed to encourage the agent when to have the ball drop closer to the target hand position, so that it eventually learns to catch it. Same logic as catch reward, but much smaller reward weight
 
         # only added on drop event
         drop_mask = self.drop_events >= 0
         if drop_mask.any():
             batch = drop_mask.nonzero(as_tuple=True)[0]
             ball_id = self.drop_events[batch] 
-
             peak = self.ball_peak_height[batch, ball_id]
             drop_pos = self.ball_drop_pos[batch, ball_id]
 
@@ -438,11 +444,12 @@ class JugglingAgentEnv(DirectRLEnv):
         ###################
         # rythem reward   #
         ###################
+        # a small reward to encourage consistent rythem, applied on throw event based on time since last throw compared to target rythem. Designed to encourage consistent throws, and to make the pattern more stable, and realistic
 
         throw_max = self.throw_events >= 0
         if throw_max.any():
-            # delta t = time since last throw for the same hand
             env_ids = throw_max.nonzero(as_tuple=True)[0]
+            # delta t = time since last throw for the same hand
             delta_t = self.throw_intervals[env_ids] # TODO, need to actually track this variable properly
             GT = torch.exp((delta_t - self.cfg.target_rythem).square() * self.sigma_rythem_coeff)
             reward[env_ids] += self.cfg.w_rythem * GT
