@@ -367,14 +367,14 @@ class JugglingAgentEnv(DirectRLEnv):
         
         # I belive this works the same as the above nested loop, but takes advantage of tensor broadcasting to make it much faster
         
-        #if self.episode_length_buf > ?  TODO, only start applying hoarding penalty after 1 second, need to figure out hz first 
-
+        # self.step_dt is automatically calculated as (sim_dt * decimation)
+        time_mask = (self.episode_length_buf * self.step_dt) > 1.0
         # in_hand is already computed in detect_events function
         balls_in_L = self.in_hand[:, :, 0].sum(dim=1)
         balls_in_R = self.in_hand[:, :, 1].sum(dim=1)
 
         hoarding = (balls_in_L > 1) | (balls_in_R > 1)
-        self.reward_buffer += -self.cfg.w_hoarding * hoarding.float()
+        self.reward_buffer += -self.cfg.w_hoarding * (hoarding & time_mask).float()
 
         ###################
         # jitter penalty  #
@@ -388,7 +388,7 @@ class JugglingAgentEnv(DirectRLEnv):
         #######################
         # highest ball reward #
         #######################
-        # a continuous reward that is applied every step based on the height of only the highest ball, and does not reward of multiple balls are up in the air. this is to encourage the agent to initially throw balls up
+        # a continuous reward that is applied every step based on the height of only the highest ball, and does not reward of multiple balls are going upwards. this is to encourage the agent to initially throw balls up
 
         # always applied
         # reward the height of only the higest ball up to a specified apex defined in the cfg file
