@@ -85,9 +85,6 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     decimation = 2
     episode_length_s = 5.0
 
-    class params(DirectRLEnvCfg.params):
-        allocate_tensors_fn = "_allocate_tensors"
-
     # - spaces definition
     action_space = 52
     observation_space = 4
