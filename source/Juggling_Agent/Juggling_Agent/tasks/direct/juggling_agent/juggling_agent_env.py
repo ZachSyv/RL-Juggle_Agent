@@ -488,10 +488,15 @@ class JugglingAgentEnv(DirectRLEnv):
         self.joint_vel = torch.cat([self.left_hand.data.joint_vel, self.right_hand.data.joint_vel], dim=1)
 
         time_out = self.episode_length_buf >= self.max_episode_length - 1
-        out_of_bounds = torch.zeros(1, dtype=torch.bool)
+        out_of_bounds = torch.zeros(1, dtype=torch.bool) # I don't think we need this anymore
+
+        ball_height = self.ball_pos[:, :, 2]
+        is_ball_dropped = ball_height < (self.cfg.ground_height + 0.1)  # small buffer to avoid numerical issues, may need tuning
+        agent_dropped = is_ball_dropped.any(dim=1)
+
         # out_of_bounds = torch.any(torch.abs(self.joint_pos[:, self.placeholder_idx1]) >= 0, dim=1)
         # out_of_bounds = out_of_bounds | torch.any(torch.abs(self.joint_pos[:, self.placeholder_idx2]) > math.pi / 2, dim=1)
-        return out_of_bounds, time_out
+        return out_of_bounds, time_out, agent_dropped
 
     def _build_init_joint_pose(self, hand: Articulation, targets: dict[str, float]):
         """Create cached joint position/velocity tensors for all envs."""
