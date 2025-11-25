@@ -354,8 +354,7 @@ class JugglingAgentEnv(DirectRLEnv):
 
 
         # calculate if the ball is in the hand, use the catch_radius variable
-        # should only be calculated after 1 second has passed to allow for initial positioning TODO
-        
+          
         # in_hand = torch.zeros((num_envs, self.cfg.num_balls, self.cfg.num_hands), device=device, dtype=torch.bool)
         # for ball in range(self.cfg.num_balls):
         #     for hand in range(self.cfg.num_hands):
@@ -574,7 +573,7 @@ class JugglingAgentEnv(DirectRLEnv):
         # env_ids = env_ids.to(self.device)
         #
         # # Reset positions of balls
-        # #self.ball_pos[env_ids] = TODO
+        # #self.ball_pos[env_ids] = 
         # self.ball_vel[env_ids] = 0
         # self.ball_peak_height[env_ids] = 0
         #
