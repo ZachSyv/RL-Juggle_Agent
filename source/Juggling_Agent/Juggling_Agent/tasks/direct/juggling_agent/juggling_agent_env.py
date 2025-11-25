@@ -52,14 +52,14 @@ class JugglingAgentEnv(DirectRLEnv):
         self.joint_vel = torch.zeros([self.num_envs, self.action_dim], device=device)
 
         # initialize scalar buffers to avoid reallocation
-        self.register_buffer("distance_target2ground", torch.tensor(1.0 / (self.cfg.target_height - self.cfg.ground_height), device=device)) # precalulate for efficiency
-        self.register_buffer("cross_pos", torch.tensor(1.0, device=device))
-        self.register_buffer("cross_neg", torch.tensor(-0.25, device=device)) # adjust penalty for same hand catch, may inhibit learning
+        self.distance_target2ground = torch.tensor(1.0 / (self.cfg.target_height - self.cfg.ground_height), device=device) # precalulate for efficiency
+        self.cross_pos = torch.tensor(1.0, device=device)
+        self.cross_neg = torch.tensor(-0.25, device=device) # adjust penalty for same hand catch, may inhibit learning
 
         # precomput parts of gaussian reward
-        self.register_buffer("sigma_apex_height_coeff", torch.tensor(-1.0 / (2 * (self.cfg.sigma_apex_height ** 2)), device=device))
-        self.register_buffer("sigma_drop_distance_coeff", torch.tensor(-1.0 / (2 * (self.cfg.sigma_drop_distance ** 2)), device=device))
-        self.register_buffer("sigma_rythem_coeff", torch.tensor(-1.0 / (2 * (self.cfg.sigma_rythem ** 2)), device=device))
+        self.sigma_apex_height_coeff = torch.tensor(-1.0 / (2 * (self.cfg.sigma_apex_height ** 2)), device=device)
+        self.sigma_drop_distance_coeff = torch.tensor(-1.0 / (2 * (self.cfg.sigma_drop_distance ** 2)), device=device)
+        self.sigma_rythem_coeff = torch.tensor(-1.0 / (2 * (self.cfg.sigma_rythem ** 2)), device=device)
 
 
     def _setup_scene(self):
