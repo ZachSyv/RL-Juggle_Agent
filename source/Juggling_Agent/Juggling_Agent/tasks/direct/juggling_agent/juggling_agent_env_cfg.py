@@ -181,7 +181,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     # first two relative to left hand, third relative to right hand
     ball_spawns = [
         {"anchor": 0, "offset": (-0.36823, -0.03328, 0.0068)},
-        {"anchor": 0, "offset": (-0.29534, 0.01543, 0.0)}, # -0.29534, 0.01543, 0.02894
+        {"anchor": 0, "offset": (-0.29534, 0.01543, 0.02894)},
         {"anchor": 1, "offset": (-0.31156, 0.0074, 0.02503)},
     ]
     # do we need to add ball attributes here?
