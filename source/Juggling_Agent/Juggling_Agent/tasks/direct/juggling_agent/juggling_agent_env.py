@@ -42,6 +42,8 @@ class JugglingAgentEnv(DirectRLEnv):
 
         # assert self.cfg.action_space == len(self.left_hand_idx) + len(self.right_hand_idx), 'action dim mismatch'
 
+        self.reward_buffer = torch.zeros(self.num_envs, device=device)
+
         self.action_dim = self.cfg.action_space
         self.actions = torch.zeros((self.num_envs, self.action_dim), device=device)
         self.prev_actions = torch.zeros((self.num_envs, self.action_dim), device=device)
@@ -311,6 +313,8 @@ class JugglingAgentEnv(DirectRLEnv):
         # )
         # return total_reward
 
+        self.reward_buffer.fill_(0.0)
+
         num_envs = self.num_envs
         device = self.device
         # ball_pos = self.ball_pos
@@ -350,7 +354,7 @@ class JugglingAgentEnv(DirectRLEnv):
         balls_in_R = self.in_hand[:, :, 1].sum(dim=1)
 
         hoarding = (balls_in_L > 1) | (balls_in_R > 1)
-        reward += -self.cfg.w_hoarding * hoarding.float()
+        self.reward_buffer += -self.cfg.w_hoarding * hoarding.float()
 
         ###################
         # jitter penalty  #
@@ -358,7 +362,7 @@ class JugglingAgentEnv(DirectRLEnv):
 
         delta_a = actions - prev_actions
         jitter = torch.sum(delta_a**2, dim=-1)
-        reward += -self.cfg.w_jitter * jitter
+        self.reward_buffer += -self.cfg.w_jitter * jitter
 
 
         #######################
@@ -386,7 +390,7 @@ class JugglingAgentEnv(DirectRLEnv):
         height_r = (height_cords_up - self.cfg.ground_height) * self.distance_target2ground
         height_r_norm = torch.clamp(height_r, 0.0, 1.0)
 
-        reward += self.cfg.w_highest * height_r_norm * one_going_up.float() * above_min.float()
+        self.reward_buffer += self.cfg.w_highest * height_r_norm * one_going_up.float() * above_min.float()
 
         ###################
         # catch reward    #
@@ -414,7 +418,7 @@ class JugglingAgentEnv(DirectRLEnv):
             cross = torch.where(throw_hand != catch_hand, self.cross_pos, self.cross_neg)
 
             catch_r = self.cfg.w_catch * Gh * cross
-            reward[batch] += catch_r
+            self.reward_buffer[batch] += catch_r
 
         ###################
         # drop reward  #
@@ -438,7 +442,7 @@ class JugglingAgentEnv(DirectRLEnv):
             Gd = torch.exp((dist).square() * self.sigma_drop_distance_coeff)
 
             drop_r = self.cfg.w_drop * Gh * Gd
-            reward[batch] += drop_r
+            self.reward_buffer[batch] += drop_r
 
 
         ###################
@@ -452,12 +456,12 @@ class JugglingAgentEnv(DirectRLEnv):
             # delta t = time since last throw for the same hand
             delta_t = self.throw_intervals[env_ids] # TODO, need to actually track this variable properly
             GT = torch.exp((delta_t - self.cfg.target_rythem).square() * self.sigma_rythem_coeff)
-            reward[env_ids] += self.cfg.w_rythem * GT
+            self.reward_buffer[env_ids] += self.cfg.w_rythem * GT
 
 
         self.prev_actions = actions.clone()
 
-        return reward
+        return self.reward_buffer
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         self.joint_pos = torch.cat([self.left_hand.data.joint_pos, self.right_hand.data.joint_pos], dim=1)
