@@ -171,7 +171,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     # pdb.set_trace()
 
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=4.0, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=512, env_spacing=4.0, replicate_physics=True)
 
     num_balls = 3
     num_hands = 2
