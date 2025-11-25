@@ -6,7 +6,8 @@ version = "0.1.0"
 # Description
 category = "isaaclab"
 readme  = "README.md"
-
+author = "Isaac Lab Project Developers"
+maintainer = "Isaac Lab Project Developers"
 title = "Isaac Lab Juggling Task"
 description = "Custom juggling environment with Shadow Hands and 3 balls."
 

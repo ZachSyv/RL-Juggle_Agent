@@ -13,7 +13,7 @@ from . import agents
 
 
 gym.register(
-    id="Template-Juggling-Agent-Direct-v0",
+    id="Isaac-JugglingAgent-v0",
     entry_point=f"{__name__}.juggling_agent_env:JugglingAgentEnv",
     disable_env_checker=True,
     kwargs={
