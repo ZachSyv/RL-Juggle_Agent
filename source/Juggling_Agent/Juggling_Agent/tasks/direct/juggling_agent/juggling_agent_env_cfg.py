@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 import os
 import math
+from pathlib import Path
 
 from isaaclab_assets.robots.cartpole import CARTPOLE_CFG
 
@@ -17,15 +18,21 @@ from isaaclab.utils import configclass
 import isaaclab.sim as sim_utils
 
 # set this path in the Path-to-IsaacLab/source/isaaclab/isaaclab/utils/assets.py
-from isaaclab.utils.assets import CUSTOM_ASSET_DIR
+# from isaaclab.utils.assets import CUSTOM_ASSET_DIR
 from isaaclab.actuators import ImplicitActuatorCfg
 
 import pdb
 
-def get_hand_cfg(prim_name, usd_file_name, pos, rot):
+CUSTOM_ASSET_DIR = str((Path(__file__).parent.parent.parent.parent / "assets").resolve())
+
+def get_hand_cfg(prim_name, usd_file_name, pos, rot, joint_pos):
     hand_cfg = ArticulationCfg(
         prim_path=f"/World/envs/env_.*/{prim_name}",
-        init_state=ArticulationCfg.InitialStateCfg(pos=pos, rot=rot),
+        init_state=ArticulationCfg.InitialStateCfg(
+            pos=pos,
+            rot=rot,
+            joint_pos=joint_pos,
+        ),
         spawn=sim_utils.UsdFileCfg(
             usd_path=os.path.join(CUSTOM_ASSET_DIR, usd_file_name),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
@@ -96,12 +103,72 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     # simulation
     sim: SimulationCfg = SimulationCfg(dt=1 / 100, render_interval=decimation)
 
+    # Initial Joint Position
+    left_joint_pos = {
+        "elbow_bend": math.radians(4.9),
+        "elbow_rotate": math.radians(4.9),
+        "WRJ1": math.radians(-7.0),
+        "WRJ2": math.radians(0.5),
+        "THJ1": math.radians(42.0),
+        "THJ2": math.radians(10.0),
+        "THJ3": math.radians(0.0),
+        "THJ4": math.radians(40.0),
+        "THJ5": math.radians(-2.0),
+        "FFJ1": math.radians(37.5),
+        "FFJ2": math.radians(52.0),
+        "FFJ3": math.radians(-1.3),
+        "FFJ4": math.radians(-18.5),
+        "MFJ1": math.radians(37.1),
+        "MFJ2": math.radians(55.2),
+        "MFJ3": math.radians(12.1),
+        "MFJ4": math.radians(14.0),
+        "RFJ1": math.radians(10.9),
+        "RFJ2": math.radians(35.0),
+        "RFJ3": math.radians(90.0),
+        "RFJ4": math.radians(-16.5),
+        "LFJ1": math.radians(36.3),
+        "LFJ2": math.radians(11.1),
+        "LFJ3": math.radians(90.0),
+        "LFJ4": math.radians(-19.9),
+        "LFJ5": math.radians(6.0),
+    }
+    right_joint_pos = {
+        "elbow_bend": math.radians(4.9),
+        "elbow_rotate": math.radians(4.9),
+        "WRJ1": math.radians(-6.9),
+        "WRJ2": math.radians(0.0),
+        "THJ1": math.radians(30.2),
+        "THJ2": math.radians(39.9),
+        "THJ3": math.radians(0.0),
+        "THJ4": math.radians(69.9),
+        "THJ5": math.radians(-20.0),
+        "FFJ1": math.radians(43.1),
+        "FFJ2": math.radians(13.1),
+        "FFJ3": math.radians(86.0),
+        "FFJ4": math.radians(-19.9),
+        "MFJ1": math.radians(39.3),
+        "MFJ2": math.radians(17.7),
+        "MFJ3": math.radians(82.6),
+        "MFJ4": math.radians(0.0),
+        "RFJ1": math.radians(32.4),
+        "RFJ2": math.radians(23.6),
+        "RFJ3": math.radians(81.9),
+        "RFJ4": math.radians(-8.0),
+        "LFJ1": math.radians(52.0),
+        "LFJ2": math.radians(72.5),
+        "LFJ3": math.radians(90.0),
+        "LFJ4": math.radians(15.0),
+        "LFJ5": math.radians(4.0),
+    }
+
     # robot(s)
     # hand_cfg: ArticulationCfg = CARTPOLE_CFG.replace(prim_path="/World/envs/env_.*/Hand")
     left_hand_cfg = get_hand_cfg("left_hand", "shadow_hand_left_with_elbow.usd",
-                                 pos=[0, -0.5, 0.5], rot=[-math.sqrt(2) / 2, 0, math.sqrt(2) / 2, 0])
+                                 pos=[0, -0.5, 0.5], rot=[-math.sqrt(2) / 2, 0, math.sqrt(2) / 2, 0],
+                                 joint_pos=left_joint_pos)
     right_hand_cfg = get_hand_cfg("right_hand", "shadow_hand_right_with_elbow.usd",
-                                  pos=[0, 0.5, 0.5], rot=[-math.sqrt(2) / 2, 0, math.sqrt(2) / 2, 0])
+                                  pos=[0, 0.5, 0.5], rot=[-math.sqrt(2) / 2, 0, math.sqrt(2) / 2, 0],
+                                  joint_pos=right_joint_pos)
 
     # pdb.set_trace()
 
