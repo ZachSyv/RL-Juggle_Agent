@@ -159,13 +159,15 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
         "LFJ5": math.radians(4.0),
     }
 
+    hand_pos = [(0, -0.5, 0.5), (0, 0.5, 0.5)]
+
     # robot(s)
     # hand_cfg: ArticulationCfg = CARTPOLE_CFG.replace(prim_path="/World/envs/env_.*/Hand")
     left_hand_cfg = get_hand_cfg("left_hand", "shadow_hand_left_with_elbow.usd",
-                                 pos=[0, -0.5, 0.5], rot=[-math.sqrt(2) / 2, 0, math.sqrt(2) / 2, 0],
+                                 pos=hand_pos[0], rot=[-math.sqrt(2) / 2, 0, math.sqrt(2) / 2, 0],
                                  joint_pos=left_joint_pos)
     right_hand_cfg = get_hand_cfg("right_hand", "shadow_hand_right_with_elbow.usd",
-                                  pos=[0, 0.5, 0.5], rot=[-math.sqrt(2) / 2, 0, math.sqrt(2) / 2, 0],
+                                  pos=hand_pos[1], rot=[-math.sqrt(2) / 2, 0, math.sqrt(2) / 2, 0],
                                   joint_pos=right_joint_pos)
 
     # pdb.set_trace()
@@ -175,6 +177,13 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
 
     num_balls = 3
     num_hands = 2
+    # ball spawn offsets relative to hands (x, y, z)
+    # first two relative to left hand, third relative to right hand
+    ball_spawns = [
+        {"anchor": 0, "offset": (-0.36823, -0.03328, 0.0068)},
+        {"anchor": 0, "offset": (-0.29534, 0.01543, 0.0)}, # -0.29534, 0.01543, 0.02894
+        {"anchor": 1, "offset": (-0.31156, 0.0074, 0.02503)},
+    ]
     # do we need to add ball attributes here?
 
     # reward weights

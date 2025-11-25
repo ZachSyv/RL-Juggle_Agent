@@ -30,6 +30,14 @@ class JugglingAgentEnv(DirectRLEnv):
         # I think setup scene is already called in the super init so this should be fine
         device = self.device
 
+        # close hands immediately after PhysX views exist so spawn starts with a grasp
+        self.left_hand_idx, _ = self.left_hand.find_joints(".*")
+        self.right_hand_idx, _ = self.right_hand.find_joints(".*")
+        self.left_hand_bias = 0
+        self.right_hand_bias = len(self.left_hand_idx)
+        self._apply_init_joint_pose(self.left_hand, self.cfg.left_joint_pos, None)
+        self._apply_init_joint_pose(self.right_hand, self.cfg.right_joint_pos, None)
+
         # import pdb;
         # pdb.set_trace()
 
@@ -67,16 +75,37 @@ class JugglingAgentEnv(DirectRLEnv):
         self.left_hand = Articulation(self.cfg.left_hand_cfg)
         self.right_hand = Articulation(self.cfg.right_hand_cfg)
 
+        self.scene.articulations["left_hand"] = self.left_hand
+        self.scene.articulations["right_hand"] = self.right_hand
+
         # add ground plane
         spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
+
+        # spawn balls in the source env and clone to others
+        ball_cfg = sim_utils.SphereCfg(
+            radius=0.0375,
+            mass_props=sim_utils.MassPropertiesCfg(mass=0.05),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            visual_material=sim_utils.materials.PreviewSurfaceCfg(diffuse_color=(0.95, 0.9, 0.6)),
+        )
+        for i in range(self.cfg.num_balls):
+            entry = self.cfg.ball_spawns[i]
+            anchor = entry.get("anchor", 0)
+            offset = entry.get("offset", (0.0, 0.0, 0.0))
+            base = self.cfg.hand_pos[anchor]
+            spawn_pos = (
+                base[0] + offset[0],
+                base[1] + offset[1],
+                base[2] + offset[2],
+            )
+            ball_cfg.func(f"/World/envs/env_.*/ball_{i}", ball_cfg, translation=spawn_pos)
+
         # clone and replicate
         self.scene.clone_environments(copy_from_source=False)
         # we need to explicitly filter collisions for CPU simulation
         if self.device == "cpu":
             self.scene.filter_collisions(global_prim_paths=[])
-        # add articulation to scene
-        self.scene.articulations["left_hand"] = self.left_hand
-        self.scene.articulations["right_hand"] = self.right_hand
         # add lights
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
@@ -467,10 +496,33 @@ class JugglingAgentEnv(DirectRLEnv):
         # out_of_bounds = out_of_bounds | torch.any(torch.abs(self.joint_pos[:, self.placeholder_idx2]) > math.pi / 2, dim=1)
         return out_of_bounds, time_out
 
+    def _apply_init_joint_pose(self, hand: Articulation, targets: dict[str, float], env_ids):
+        """Apply initial joint pose targets by name for selected envs."""
+        # resolve env_ids to slice or tensor for articulation API
+        name_to_idx = {n: i for i, n in enumerate(hand.joint_names)}
+        joint_pos = torch.zeros((self.num_envs, hand.num_joints), device=self.device)
+        joint_vel = torch.zeros_like(joint_pos)
+        for name, val in targets.items():
+            if name in name_to_idx:
+                joint_pos[:, name_to_idx[name]] = val
+
+        if env_ids is None:
+            pos_target = joint_pos
+            vel_target = joint_vel
+        else:
+            pos_target = joint_pos[env_ids]
+            vel_target = joint_vel[env_ids]
+        hand.set_joint_position_target(pos_target, env_ids=env_ids)
+        hand.set_joint_velocity_target(vel_target, env_ids=env_ids)
+
+        hand.write_joint_state_to_sim(pos_target, vel_target, None, env_ids=env_ids)
+
     def _reset_idx(self, env_ids: Sequence[int] | None):
         # if env_ids is None:
         #     env_ids = self.left_hand._ALL_INDICES
         super()._reset_idx(env_ids)
+        self._apply_init_joint_pose(self.left_hand, self.cfg.left_joint_pos, env_ids)
+        self._apply_init_joint_pose(self.right_hand, self.cfg.right_joint_pos, env_ids)
 
         # joint_pos = self.left_hand.data.default_joint_pos[env_ids]
         # joint_pos[:, self.placeholder_idx2] += sample_uniform(
