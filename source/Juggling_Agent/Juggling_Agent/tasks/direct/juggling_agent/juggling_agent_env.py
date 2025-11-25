@@ -40,14 +40,21 @@ class JugglingAgentEnv(DirectRLEnv):
         self.left_hand_bias = 0
         self.right_hand_bias = len(self.left_hand_idx)
 
-        # Initialize joint positions
-        self._apply_init_joint_pose(self.left_hand, self.cfg.left_joint_pos, None)
-        self._apply_init_joint_pose(self.right_hand, self.cfg.right_joint_pos, None)
-
         # create ball view
         if self.sim.physics_sim_view is None:
             self.sim.reset()
         self.ball_view = self.sim.physics_sim_view.create_rigid_body_view("/World/envs/env_*/ball_*")
+
+        # build the initial joint pos
+        self.init_left_joint_pos = self._build_init_joint_pose(self.left_hand, self.cfg.left_joint_pos)
+        self.init_right_joint_pos = self._build_init_joint_pose(self.right_hand, self.cfg.right_joint_pos)
+
+        # build the initial ball pos
+        ball_spawn_offsets = torch.tensor(self.cfg.ball_offset, device=device) # (num_balls, 3)
+        ball_anchors = torch.tensor(self.cfg.ball_anchor, device=device)  # (num_balls, 3)
+        hand_bases = torch.tensor(self.cfg.hand_pos, device=self.device)  # (2, 3)
+        anchor_pos = hand_bases[ball_anchors]  # (num_balls, 3)
+        self.init_ball_pos = anchor_pos + ball_spawn_offsets
 
         # assert self.cfg.action_space == len(self.left_hand_idx) + len(self.right_hand_idx), 'action dim mismatch'
 
@@ -84,23 +91,14 @@ class JugglingAgentEnv(DirectRLEnv):
 
         # spawn balls in the source env and clone to others
         ball_cfg = sim_utils.SphereCfg(
-            radius=0.0375,
+            radius=self.cfg.ball_radius,
             mass_props=sim_utils.MassPropertiesCfg(mass=0.05),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(),
             collision_props=sim_utils.CollisionPropertiesCfg(),
             visual_material=sim_utils.materials.PreviewSurfaceCfg(diffuse_color=(0.95, 0.9, 0.6)),
         )
         for i in range(self.cfg.num_balls):
-            entry = self.cfg.ball_spawns[i]
-            anchor = entry.get("anchor", 0)
-            offset = entry.get("offset", (0.0, 0.0, 0.0))
-            base = self.cfg.hand_pos[anchor]
-            spawn_pos = (
-                base[0] + offset[0],
-                base[1] + offset[1],
-                base[2] + offset[2],
-            )
-            ball_cfg.func(f"/World/envs/env_.*/ball_{i}", ball_cfg, translation=spawn_pos)
+            ball_cfg.func(f"/World/envs/env_.*/ball_{i}", ball_cfg, translation=(0.0, 0.0, 0.0))
 
         # clone and replicate
         self.scene.clone_environments(copy_from_source=False)
@@ -110,14 +108,6 @@ class JugglingAgentEnv(DirectRLEnv):
         # add lights
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
-
-        self.ball_spawn_offsets = torch.tensor(
-            [entry.get("offset", (0.0, 0.0, 0.0)) for entry in self.cfg.ball_spawns],
-            device=device
-        ) # (num_balls, 3)
-        ball_anchors = torch.tensor([entry.get("anchor", 0) for entry in self.cfg.ball_spawns], device=device)  # (num_balls, 3)
-        hand_bases = torch.tensor(self.cfg.hand_pos, device=self.device)  # (2, 3)
-        self.anchor_pos = hand_bases[ball_anchors]  # (num_balls, 3)
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self.actions = actions.clone()
@@ -503,22 +493,23 @@ class JugglingAgentEnv(DirectRLEnv):
         # out_of_bounds = out_of_bounds | torch.any(torch.abs(self.joint_pos[:, self.placeholder_idx2]) > math.pi / 2, dim=1)
         return out_of_bounds, time_out
 
-    def _apply_init_joint_pose(self, hand: Articulation, targets: dict[str, float], env_ids):
-        """Apply initial joint pose targets by name for selected envs."""
-        # resolve env_ids to slice or tensor for articulation API
+    def _build_init_joint_pose(self, hand: Articulation, targets: dict[str, float]):
+        """Create cached joint position/velocity tensors for all envs."""
         name_to_idx = {n: i for i, n in enumerate(hand.joint_names)}
-        joint_pos = torch.zeros((self.num_envs, hand.num_joints), device=self.device)
-        joint_vel = torch.zeros_like(joint_pos)
+        joint_pos = torch.zeros((hand.num_joints,), device=self.device)
         for name, val in targets.items():
             if name in name_to_idx:
-                joint_pos[:, name_to_idx[name]] = val
+                joint_pos[name_to_idx[name]] = val
+        joint_pos = joint_pos.repeat(self.num_envs, 1)
+        return joint_pos
 
+    def _apply_init_joint_pose(self, hand: Articulation, joint_pos: torch.Tensor, env_ids):
+        """Apply initial joint pose targets from cached tensors for selected envs."""
         if env_ids is None:
             pos_target = joint_pos
-            vel_target = joint_vel
         else:
             pos_target = joint_pos[env_ids]
-            vel_target = joint_vel[env_ids]
+        vel_target = torch.zeros_like(pos_target)
         hand.set_joint_position_target(pos_target, env_ids=env_ids)
         hand.set_joint_velocity_target(vel_target, env_ids=env_ids)
 
@@ -531,7 +522,7 @@ class JugglingAgentEnv(DirectRLEnv):
         env_ids = torch.as_tensor(env_ids, device=self.device)
 
         origins = self.scene.env_origins[env_ids]  # (n, 3)
-        ball_pos = origins[:, None, :] + self.anchor_pos + self.ball_spawn_offsets  # (n, num_balls, 3)
+        ball_pos = origins[:, None, :] + self.init_ball_pos  # (n, num_balls, 3)
 
         flat_pos = ball_pos.reshape(-1, 3)  # (n * num_balls, 3)
         # build root pose tensor expected by PhysX view (pos + xyzw quat)
@@ -551,8 +542,8 @@ class JugglingAgentEnv(DirectRLEnv):
         #     env_ids = self.left_hand._ALL_INDICES
         super()._reset_idx(env_ids)
 
-        self._apply_init_joint_pose(self.left_hand, self.cfg.left_joint_pos, env_ids)
-        self._apply_init_joint_pose(self.right_hand, self.cfg.right_joint_pos, env_ids)
+        self._apply_init_joint_pose(self.left_hand, self.init_left_joint_pos, env_ids)
+        self._apply_init_joint_pose(self.right_hand, self.init_right_joint_pos, env_ids)
 
         self._reset_ball_pos(env_ids)
 

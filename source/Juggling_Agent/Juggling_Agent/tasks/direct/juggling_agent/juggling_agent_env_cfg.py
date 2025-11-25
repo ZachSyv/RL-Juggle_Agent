@@ -179,11 +179,13 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     num_hands = 2
     # ball spawn offsets relative to hands (x, y, z)
     # first two relative to left hand, third relative to right hand
-    ball_spawns = [
-        {"anchor": 0, "offset": (-0.36823, -0.03328, 0.0068)},
-        {"anchor": 0, "offset": (-0.29534, 0.01543, 0.02894)},
-        {"anchor": 1, "offset": (-0.31156, 0.0074, 0.02503)},
+    ball_offset = [
+        (-0.36823, -0.03328, 0.0068),
+        (-0.29534, 0.01543, 0.02894),
+        (-0.31156, 0.0074, 0.02503),
     ]
+    ball_anchor = [0, 0, 1]
+    ball_radius = 0.0375
     # do we need to add ball attributes here?
 
     # reward weights
