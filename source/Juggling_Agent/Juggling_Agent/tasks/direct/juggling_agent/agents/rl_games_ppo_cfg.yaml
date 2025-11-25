@@ -28,9 +28,10 @@ params:
         sigma_init:
           name: const_initializer
           val: 0
-        fixed_sigma: True
+        #fixed_sigma: True
+        fixed_sigma: False # allow the agent to tighten it's movement over time
     mlp:
-      units: [32, 32]
+      units: [512, 256, 128] # needs wayyyyy more model capacity for juggling, original [32, 32]
       activation: elu
       d2rl: False
 
@@ -43,7 +44,7 @@ params:
   load_path: '' # path to the checkpoint to load
 
   config:
-    name: cartpole_direct
+    name: juggling_agent_rl_games_ppo
     env_name: rlgpu
     device: 'cuda:0'
     device_name: 'cuda:0'
@@ -58,19 +59,19 @@ params:
     normalize_advantage: True
     gamma: 0.99
     tau : 0.95
-    learning_rate: 5e-4
+    learning_rate: 3e-4 # original 5e-4, make it a bit lower for stability
     lr_schedule: adaptive
     kl_threshold: 0.008
     score_to_win: 20000
-    max_epochs: 150
+    max_epochs: 2000
     save_best_after: 50
     save_frequency: 25
     grad_norm: 1.0
-    entropy_coef: 0.0
+    entropy_coef: 0.01 # encourage exploration
     truncate_grads: True
     e_clip: 0.2
-    horizon_length: 32
-    minibatch_size: 16384
+    horizon_length: 120 # ~= 4 seconds, needs to see longer horizon for juggling, originally 32
+    minibatch_size: 4096 #incrase if we incrsae num envs, originally 16384
     mini_epochs: 8
     critic_coef: 4
     clip_value: True
