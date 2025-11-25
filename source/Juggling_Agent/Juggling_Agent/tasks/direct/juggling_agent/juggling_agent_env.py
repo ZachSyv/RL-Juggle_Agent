@@ -30,14 +30,6 @@ class JugglingAgentEnv(DirectRLEnv):
         # I think setup scene is already called in the super init so this should be fine
         device = self.device
 
-        # close hands immediately after PhysX views exist so spawn starts with a grasp
-        self.left_hand_idx, _ = self.left_hand.find_joints(".*")
-        self.right_hand_idx, _ = self.right_hand.find_joints(".*")
-        self.left_hand_bias = 0
-        self.right_hand_bias = len(self.left_hand_idx)
-        self._apply_init_joint_pose(self.left_hand, self.cfg.left_joint_pos, None)
-        self._apply_init_joint_pose(self.right_hand, self.cfg.right_joint_pos, None)
-
         # import pdb;
         # pdb.set_trace()
 
@@ -47,6 +39,10 @@ class JugglingAgentEnv(DirectRLEnv):
         # create bias for each obj
         self.left_hand_bias = 0
         self.right_hand_bias = len(self.left_hand_idx)
+
+        # Initialize joint positions
+        self._apply_init_joint_pose(self.left_hand, self.cfg.left_joint_pos, None)
+        self._apply_init_joint_pose(self.right_hand, self.cfg.right_joint_pos, None)
 
         # assert self.cfg.action_space == len(self.left_hand_idx) + len(self.right_hand_idx), 'action dim mismatch'
 
@@ -521,8 +517,9 @@ class JugglingAgentEnv(DirectRLEnv):
         # if env_ids is None:
         #     env_ids = self.left_hand._ALL_INDICES
         super()._reset_idx(env_ids)
-        self._apply_init_joint_pose(self.left_hand, self.cfg.left_joint_pos, env_ids)
-        self._apply_init_joint_pose(self.right_hand, self.cfg.right_joint_pos, env_ids)
+        # Do not change hand to prevent ball drop
+        # self._apply_init_joint_pose(self.left_hand, self.cfg.left_joint_pos, env_ids)
+        # self._apply_init_joint_pose(self.right_hand, self.cfg.right_joint_pos, env_ids)
 
         # joint_pos = self.left_hand.data.default_joint_pos[env_ids]
         # joint_pos[:, self.placeholder_idx2] += sample_uniform(
