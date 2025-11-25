@@ -33,12 +33,12 @@ class JugglingAgentEnv(DirectRLEnv):
         # import pdb;
         # pdb.set_trace()
 
-        # self.left_hand_idx, _ =  self.left_hand.find_joints(".*")
-        # self.right_hand_idx, _ = self.right_hand.find_joints(".*")
+        self.left_hand_idx, _ =  self.left_hand.find_joints(".*")
+        self.right_hand_idx, _ = self.right_hand.find_joints(".*")
 
-        # # create bias for each obj
-        # self.left_hand_bias = 0
-        # self.right_hand_bias = len(self.left_hand_idx)
+        # create bias for each obj
+        self.left_hand_bias = 0
+        self.right_hand_bias = len(self.left_hand_idx)
 
         # assert self.cfg.action_space == len(self.left_hand_idx) + len(self.right_hand_idx), 'action dim mismatch'
 
@@ -67,12 +67,6 @@ class JugglingAgentEnv(DirectRLEnv):
         self.left_hand = Articulation(self.cfg.left_hand_cfg)
         self.right_hand = Articulation(self.cfg.right_hand_cfg)
 
-        self.left_hand_idx, _ =  self.left_hand.find_joints(".*")
-        self.right_hand_idx, _ = self.right_hand.find_joints(".*")
-
-        # create bias for each obj
-        self.left_hand_bias = 0
-        self.right_hand_bias = len(self.left_hand_idx)
         # add ground plane
         spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
         # clone and replicate
