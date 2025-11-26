@@ -5,6 +5,11 @@ Move into the directory containing IsaacLab (mine is isaacsim/Isaaclab)
 
 Assuming the project is stored parallel to isaacsim directory.
 
+### Install package
+./isaaclab.sh -p -m pip install -force-reinstall -e ../../JugglingAgent/RL-Juggle_Agent/source/Juggling_Agent
+
+### Train model in sim
+
 ./isaaclab.sh -p ../../JugglingAgent/RL-Juggle_Agent/scripts/rl_games/train.py --task=Isaac-JugglingAgent-v0 --headless
 
 
