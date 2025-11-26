@@ -10,7 +10,7 @@ import torch
 from collections.abc import Sequence
 
 import isaaclab.sim as sim_utils
-from isaaclab.assets import Articulation
+from isaaclab.assets import Articulation, RigidObject, RigidObjectCfg
 from isaaclab.envs import DirectRLEnv
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils.math import sample_uniform
@@ -41,9 +41,9 @@ class JugglingAgentEnv(DirectRLEnv):
         self.right_hand_bias = len(self.left_hand_idx)
 
         # create ball view
-        if self.sim.physics_sim_view is None:
-            self.sim.reset()
-        self.ball_view = self.sim.physics_sim_view.create_rigid_body_view("/World/envs/env_*/ball_*")
+        # if self.sim.physics_sim_view is None:
+        #     self.sim.reset()
+        # self.ball_view = self.sim.physics_sim_view.create_rigid_body_view("/World/envs/env_*/ball_*")
 
         # build the initial joint pos
         self.init_left_joint_pos = self._build_init_joint_pose(self.left_hand, self.cfg.left_joint_pos)
@@ -100,6 +100,13 @@ class JugglingAgentEnv(DirectRLEnv):
         for i in range(self.cfg.num_balls):
             ball_cfg.func(f"/World/envs/env_.*/ball_{i}", ball_cfg, translation=(0.0, 0.0, 0.0))
 
+        self.balls = []
+        for i in range(self.cfg.num_balls):
+            ball_cfg = RigidObjectCfg(prim_path=f"/World/envs/env_.*/ball_{i}")
+            ball_obj = RigidObject(ball_cfg)
+            self.balls.append(ball_obj)
+            self.scene.rigid_objects[f"ball_{i}"] = ball_obj
+
         # clone and replicate
         self.scene.clone_environments(copy_from_source=False)
         # we need to explicitly filter collisions for CPU simulation
@@ -118,13 +125,6 @@ class JugglingAgentEnv(DirectRLEnv):
         self.right_hand.set_joint_effort_target(
             self.actions[:, assign_bias(self.right_hand_bias, self.right_hand_idx)] * 2, joint_ids=self.right_hand_idx)
         []
-        # TODO
-        # apply the actions to both hands
-        # self.left_hand.apply_action(...)
-        # self.right_hand.apply_action(...)
-
-    # do we need a post physics step to update ball and hand positions? TODO?
-
     
     def _allocate_tensors(self):
 
@@ -158,8 +158,6 @@ class JugglingAgentEnv(DirectRLEnv):
         self.throw_last_time = torch.zeros(num_envs, device=device)
         self.throw_intervals = torch.zeros(num_envs, device=device)
 
-        # TODO initial ball positions
-
     def compute_target_hand_position(self, env_ids, ball_ids):
         throw_hand = self.ball_throw_hand[env_ids, ball_ids]
         opposite = 1 - throw_hand # 0 is left hand, 1 is right hand, so 1-throw_hand gives opposite hand index
@@ -168,23 +166,43 @@ class JugglingAgentEnv(DirectRLEnv):
     def _get_observations(self) -> dict:
         # import pdb; pdb.set_trace()
 
-        obs = torch.cat(
-            (
-                self.joint_pos[:, self.left_hand_idx],
-                self.joint_vel[:, self.left_hand_idx],
-                self.joint_pos[:, self.right_hand_idx],
-                self.joint_vel[:, self.right_hand_idx],
-            ),
-            dim=-1,
-        )
         # obs = torch.cat(
         #     (
-        #         self.hand_pos.reshape(self.num_envs, -1),
-        #         self.ball_pos.reshape(self.num_envs, -1),
-        #         self.ball_vel.reshape(self.num_envs, -1),
+        #         self.joint_pos[:, self.left_hand_idx],
+        #         self.joint_vel[:, self.left_hand_idx],
+        #         self.joint_pos[:, self.right_hand_idx],
+        #         self.joint_vel[:, self.right_hand_idx],
         #     ),
-        #     dim=1,
+        #     dim=-1,
         # )
+
+        left_pos = self.left_hand.data.joint_pos
+        left_vel = self.left_hand.data.joint_vel
+        right_pos = self.right_hand.data.joint_pos
+        right_vel = self.right_hand.data.joint_vel
+
+        hand_split = left_pos.shape[1] # split index for left and right hand joints
+
+        self.joint_pos[:, :hand_split] = left_pos
+        self.joint_pos[:, hand_split:] = right_pos
+        self.joint_vel[:, :hand_split] = left_vel
+        self.joint_vel[:, hand_split:] = right_vel
+
+        self.hand_pos[:, 0] = self.left_hand.data.root_pos_w
+        self.hand_pos[:, 1] = self.right_hand.data.root_pos_w
+
+        self.ball_pos = torch.stack([ball.data.root_pos_w for ball in self.balls], dim=1)
+        self.ball_vel = torch.stack([ball.data.root_vel_w for ball in self.balls], dim=1)
+        obs = torch.cat(
+            (
+                self.joint_pos,
+                self.joint_vel,
+                self.hand_pos.reshape(self.num_envs, -1),
+                self.ball_pos.reshape(self.num_envs, -1),
+                self.ball_vel.reshape(self.num_envs, -1),
+            ),
+            dim=1,
+        )
         observations = {"policy": obs}
         return observations
 
@@ -524,23 +542,32 @@ class JugglingAgentEnv(DirectRLEnv):
         """Reset ball transforms and velocities"""
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device)
-        env_ids = torch.as_tensor(env_ids, device=self.device)
+        
+        for i, ball in enumerate(self.balls):
+            default_state = ball.data.default_root_state[env_ids].clone()
+            default_state[:, :3] = self.scene.env_origins[env_ids] # first 3 cols in root state are position x,y,z
+            default_state[:, :3] += self.init_ball_pos[None, i, :]  # add initial offset
+            # default velocity
+            default_state[:, 7:] = 0.0 # last 6 cols in default root state are linear and angular velocity
+            ball.write_root_state_to_sim(default_state, env_ids=env_ids)
 
-        origins = self.scene.env_origins[env_ids]  # (n, 3)
-        ball_pos = origins[:, None, :] + self.init_ball_pos  # (n, num_balls, 3)
+        # env_ids = torch.as_tensor(env_ids, device=self.device)
 
-        flat_pos = ball_pos.reshape(-1, 3)  # (n * num_balls, 3)
-        # build root pose tensor expected by PhysX view (pos + xyzw quat)
-        flat_pos = torch.nn.functional.pad(flat_pos, (0, 4), value=0.0)  # (n * num_balls, 7)
-        flat_pos[:, 6] = 1.0
-        flat_vel = torch.zeros((flat_pos.shape[0], 6), device=self.device)  # (n * num_balls, 6)
+        # origins = self.scene.env_origins[env_ids]  # (n, 3)
+        # ball_pos = origins[:, None, :] + self.init_ball_pos  # (n, num_balls, 3)
 
-        # view indices align as env-major: env_id * num_balls + ball_id
-        view_ids = (env_ids[:, None] * self.cfg.num_balls + torch.arange(self.cfg.num_balls,
-                                                                         device=self.device)).reshape(-1)
+        # flat_pos = ball_pos.reshape(-1, 3)  # (n * num_balls, 3)
+        # # build root pose tensor expected by PhysX view (pos + xyzw quat)
+        # flat_pos = torch.nn.functional.pad(flat_pos, (0, 4), value=0.0)  # (n * num_balls, 7)
+        # flat_pos[:, 6] = 1.0
+        # flat_vel = torch.zeros((flat_pos.shape[0], 6), device=self.device)  # (n * num_balls, 6)
 
-        self.ball_view.set_transforms(flat_pos, indices=view_ids)
-        self.ball_view.set_velocities(flat_vel, indices=view_ids)
+        # # view indices align as env-major: env_id * num_balls + ball_id
+        # view_ids = (env_ids[:, None] * self.cfg.num_balls + torch.arange(self.cfg.num_balls,
+        #                                                                  device=self.device)).reshape(-1)
+
+        # self.ball_view.set_transforms(flat_pos, indices=view_ids)
+        # self.ball_view.set_velocities(flat_vel, indices=view_ids)
 
     def _reset_idx(self, env_ids: Sequence[int] | None):
         # if env_ids is None:
