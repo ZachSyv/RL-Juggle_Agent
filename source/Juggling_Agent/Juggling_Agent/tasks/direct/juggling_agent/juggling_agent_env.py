@@ -81,7 +81,6 @@ class JugglingAgentEnv(DirectRLEnv):
         self._allocate_tensors()
 
     def _setup_scene(self):
-        device = self.device
         self.left_hand = Articulation(self.cfg.left_hand_cfg)
         self.right_hand = Articulation(self.cfg.right_hand_cfg)
 
@@ -201,7 +200,6 @@ class JugglingAgentEnv(DirectRLEnv):
         self.hand_pos[:, 1] = self.right_hand.data.root_pos_w
 
         self.ball_pos = torch.stack([ball.data.root_pos_w for ball in self.balls], dim=1)
-        #self.ball_vel = torch.stack([ball.data.root_vel_w for ball in self.balls], dim=1)
         self.ball_vel = torch.stack([ball.data.root_vel_w[:, :3] for ball in self.balls], dim=1)
         
         self.detect_events()
@@ -647,18 +645,3 @@ class JugglingAgentEnv(DirectRLEnv):
         # self.throw_intervals[env_ids] = 0
         #
         # return super().reset_idx(env_ids)
-
-# I don't think we need this function anymore since the reward is computed inline
-# @torch.jit.script
-# def compute_rewards(
-#     rew_scale_alive: float,
-#     rew_scale_terminated: float,
-#     rew_scale_pole_pos: float,
-#     rew_scale_cart_vel: float,
-#     rew_scale_pole_vel: float,
-#     pole_pos: torch.Tensor,
-#     pole_vel: torch.Tensor,
-#     cart_pos: torch.Tensor,
-#     cart_vel: torch.Tensor,
-#     reset_terminated: torch.Tensor,
-# ):
