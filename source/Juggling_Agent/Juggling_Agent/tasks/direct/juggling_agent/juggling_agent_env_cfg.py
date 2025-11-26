@@ -159,7 +159,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
         "LFJ5": math.radians(4.0),
     }
 
-    hand_pos = [(0, -0.5, 0.5), (0, 0.5, 0.5)]
+    hand_pos = [(0, -0.5, 0.4), (0, 0.5, 0.4)]
 
     # robot(s)
     # hand_cfg: ArticulationCfg = CARTPOLE_CFG.replace(prim_path="/World/envs/env_.*/Hand")
