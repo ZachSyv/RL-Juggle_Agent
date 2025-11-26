@@ -1,17 +1,22 @@
 # Template for Isaac Lab Projects
 
+## Command to Train
+Move into the directory containing IsaacLab (mine is isaacsim/Isaaclab)
+
+Assuming the project is stored parallel to isaacsim directory.
+
+./isaaclab.sh -p ../../JugglingAgent/RL-Juggle_Agent/scripts/rl_games/train.py --task=Isaac-JugglingAgent-v0 --headless
+
+
 # TODOs
 
 ## ~Model~
 
-- ~Make a flipped version of the hand in the .usd file~
-- ~Add an additional joint so the forearm can move as well~
-- ~Preset simulator so the hands are holding the balls correctly~
+-Done!
 
 ## Learning
 
 - Check reward function implimentation correctness
-- Impliment other needed functions to get simulator to work
 - Start training, configure the weights in juggling_agent_env_cfg, and the hyperparameters in rl_game_ppo_cfg.yaml
 
 ## Baseline
