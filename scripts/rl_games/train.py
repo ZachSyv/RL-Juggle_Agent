@@ -169,9 +169,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if isinstance(env_cfg, ManagerBasedRLEnvCfg):
         env_cfg.export_io_descriptors = args_cli.export_io_descriptors
     else:
-        omni.log.warn(
-            "IO descriptors are only supported for manager based RL environments. No IO descriptors will be exported."
-        )
+        print("IO descriptors are only supported for manager based RL environments. No IO descriptors will be exported.")
+        # omni.log.warn(
+        #     "IO descriptors are only supported for manager based RL environments. No IO descriptors will be exported."
+        # )
 
     # set the log directory for the environment (works for all environment types)
     env_cfg.log_dir = os.path.join(log_root_path, log_dir)
