@@ -5,10 +5,11 @@
 import os
 import math
 from pathlib import Path
+import torch
 
 from isaaclab_assets.robots.cartpole import CARTPOLE_CFG
 
-from isaaclab.assets import ArticulationCfg
+from isaaclab.assets import ArticulationCfg, RigidObjectCfg
 from isaaclab.envs import DirectRLEnvCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import SimulationCfg
@@ -86,6 +87,21 @@ def get_hand_cfg(prim_name, usd_file_name, pos, rot, joint_pos):
     return hand_cfg
 
 
+def get_ball_cfg(prim_name, radius, pos):
+    ball_cfg = RigidObjectCfg(
+        prim_path=f"/World/envs/env_.*/{prim_name}",
+        init_state=RigidObjectCfg.InitialStateCfg(pos=pos),
+        spawn=sim_utils.SphereCfg(
+            radius=radius,
+            mass_props=sim_utils.MassPropertiesCfg(mass=0.05),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            visual_material=sim_utils.materials.PreviewSurfaceCfg(diffuse_color=(0.95, 0.9, 0.6)),
+        )
+    )
+    return ball_cfg
+
+
 @configclass
 class JugglingAgentEnvCfg(DirectRLEnvCfg):
     # env
@@ -161,20 +177,6 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
 
     hand_pos = [(0, -0.5, 0.5), (0, 0.5, 0.5)]
 
-    # robot(s)
-    # hand_cfg: ArticulationCfg = CARTPOLE_CFG.replace(prim_path="/World/envs/env_.*/Hand")
-    left_hand_cfg = get_hand_cfg("left_hand", "shadow_hand_left_with_elbow.usd",
-                                 pos=hand_pos[0], rot=[-math.sqrt(2) / 2, 0, math.sqrt(2) / 2, 0],
-                                 joint_pos=left_joint_pos)
-    right_hand_cfg = get_hand_cfg("right_hand", "shadow_hand_right_with_elbow.usd",
-                                  pos=hand_pos[1], rot=[-math.sqrt(2) / 2, 0, math.sqrt(2) / 2, 0],
-                                  joint_pos=right_joint_pos)
-
-    # pdb.set_trace()
-
-    # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=512, env_spacing=4.0, replicate_physics=True)
-
     num_balls = 3
     num_hands = 2
     # ball spawn offsets relative to hands (x, y, z)
@@ -187,6 +189,30 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     ball_anchor = [0, 0, 1]
     ball_radius = 0.0375
     # do we need to add ball attributes here?
+
+    ball_spawn_offsets = torch.tensor(ball_offset)  # (num_balls, 3)
+    ball_anchors = torch.tensor(ball_anchor)  # (num_balls, 3)
+    hand_bases = torch.tensor(hand_pos)  # (2, 3)
+    anchor_pos = hand_bases[ball_anchors]  # (num_balls, 3)
+    init_ball_pos = anchor_pos + ball_spawn_offsets
+
+    # robot(s)
+    # hand_cfg: ArticulationCfg = CARTPOLE_CFG.replace(prim_path="/World/envs/env_.*/Hand")
+    left_hand_cfg = get_hand_cfg("left_hand", "shadow_hand_left_with_elbow.usd",
+                                 pos=hand_pos[0], rot=[-math.sqrt(2) / 2, 0, math.sqrt(2) / 2, 0],
+                                 joint_pos=left_joint_pos)
+    right_hand_cfg = get_hand_cfg("right_hand", "shadow_hand_right_with_elbow.usd",
+                                  pos=hand_pos[1], rot=[-math.sqrt(2) / 2, 0, math.sqrt(2) / 2, 0],
+                                  joint_pos=right_joint_pos)
+
+    ball1_cfg = get_ball_cfg("ball_1", ball_radius, pos=init_ball_pos[0])
+    ball2_cfg = get_ball_cfg("ball_2", ball_radius, pos=init_ball_pos[1])
+    ball3_cfg = get_ball_cfg("ball_3", ball_radius, pos=init_ball_pos[2])
+
+    # pdb.set_trace()
+
+    # scene
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=512, env_spacing=4.0, replicate_physics=True)
 
     # reward weights
     w_hoarding = 2.0        # should be high to strongly discourage hoarding 2 balls in one hand
