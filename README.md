@@ -6,12 +6,22 @@
 
 - ~Make a flipped version of the hand in the .usd file~
 - ~Add an additional joint so the forearm can move as well~
-- Preset simulator so the hands are holding the balls correctly
+- ~Preset simulator so the hands are holding the balls correctly~
 
 ## Learning
 
-- Finish reward function
+- Check reward function implimentation correctness
 - Impliment other needed functions to get simulator to work
+- Start training, configure the weights in juggling_agent_env_cfg, and the hyperparameters in rl_game_ppo_cfg.yaml
+
+## Baseline
+- Non-RL method. Simply use the trajectory of the balls and move the hands accordingly.
+- Expect it to be way more consistent, but should look less natural and way more robotic.
+- Impliment technique used here?: https://web.archive.org/web/20121114124405/http://dce.fel.cvut.cz/juggler/, https://la.disneyresearch.com/wp-content/uploads/Playing-Catch-and-Juggling-with-a-Humanoid-Robot-Paper.pdf
+
+## Ablation Study
+- To be done after we get a good working model
+- 6 Ablation studies where we turn off a part of the reward functions in each. Eg set the hoarding to 0 in one, rythem to 0 in another, etc
 
 ## Overview
 

@@ -350,8 +350,7 @@ class JugglingAgentEnv(DirectRLEnv):
 
 
         # calculate if the ball is in the hand, use the catch_radius variable
-        # should only be calculated after 1 second has passed to allow for initial positioning TODO
-        
+          
         # in_hand = torch.zeros((num_envs, self.cfg.num_balls, self.cfg.num_hands), device=device, dtype=torch.bool)
         # for ball in range(self.cfg.num_balls):
         #     for hand in range(self.cfg.num_hands):
@@ -363,14 +362,14 @@ class JugglingAgentEnv(DirectRLEnv):
         
         # I belive this works the same as the above nested loop, but takes advantage of tensor broadcasting to make it much faster
         
-        #if self.episode_length_buf > ?  TODO, only start applying hoarding penalty after 1 second, need to figure out hz first 
-
+        # self.step_dt is automatically calculated as (sim_dt * decimation)
+        time_mask = (self.episode_length_buf * self.step_dt) > 1.0
         # in_hand is already computed in detect_events function
         balls_in_L = self.in_hand[:, :, 0].sum(dim=1)
         balls_in_R = self.in_hand[:, :, 1].sum(dim=1)
 
         hoarding = (balls_in_L > 1) | (balls_in_R > 1)
-        self.reward_buffer += -self.cfg.w_hoarding * hoarding.float()
+        self.reward_buffer += -self.cfg.w_hoarding * (hoarding & time_mask).float()
 
         ###################
         # jitter penalty  #
@@ -384,7 +383,7 @@ class JugglingAgentEnv(DirectRLEnv):
         #######################
         # highest ball reward #
         #######################
-        # a continuous reward that is applied every step based on the height of only the highest ball, and does not reward of multiple balls are up in the air. this is to encourage the agent to initially throw balls up
+        # a continuous reward that is applied every step based on the height of only the highest ball, and does not reward of multiple balls are going upwards. this is to encourage the agent to initially throw balls up
 
         # always applied
         # reward the height of only the higest ball up to a specified apex defined in the cfg file
@@ -484,9 +483,15 @@ class JugglingAgentEnv(DirectRLEnv):
         self.joint_vel = torch.cat([self.left_hand.data.joint_vel, self.right_hand.data.joint_vel], dim=1)
 
         time_out = self.episode_length_buf >= self.max_episode_length - 1
-        out_of_bounds = torch.zeros(1, dtype=torch.bool)
+        out_of_bounds = torch.zeros(1, dtype=torch.bool) # I don't think we need this anymore
+
+        # ball_height = self.ball_pos[:, :, 2]
+        # is_ball_dropped = ball_height < (self.cfg.ground_height + 0.1)  # small buffer to avoid numerical issues, may need tuning
+        # agent_dropped = is_ball_dropped.any(dim=1)
+
         # out_of_bounds = torch.any(torch.abs(self.joint_pos[:, self.placeholder_idx1]) >= 0, dim=1)
         # out_of_bounds = out_of_bounds | torch.any(torch.abs(self.joint_pos[:, self.placeholder_idx2]) > math.pi / 2, dim=1)
+        #return out_of_bounds, time_out, agent_dropped
         return out_of_bounds, time_out
 
     def _build_init_joint_pose(self, hand: Articulation, targets: dict[str, float]):
@@ -579,7 +584,7 @@ class JugglingAgentEnv(DirectRLEnv):
         # env_ids = env_ids.to(self.device)
         #
         # # Reset positions of balls
-        # #self.ball_pos[env_ids] = TODO
+        # #self.ball_pos[env_ids] = 
         # self.ball_vel[env_ids] = 0
         # self.ball_peak_height[env_ids] = 0
         #

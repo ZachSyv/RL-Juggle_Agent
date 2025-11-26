@@ -175,7 +175,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
         "LFJ5": math.radians(4.0),
     }
 
-    hand_pos = [(0, -0.5, 0.5), (0, 0.5, 0.5)]
+    hand_pos = [(0, -0.5, 0.4), (0, 0.5, 0.4)]
 
     num_balls = 3
     num_hands = 2
@@ -229,7 +229,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     ground_height = 0.0 # should be configured to be right below where the hands can reach
 
     # tolerances
-    sigma_rythem = 0.05
+    sigma_rythem = 0.1
     sigma_drop_distance = 0.2
     sigma_apex_height = 0.1
     
