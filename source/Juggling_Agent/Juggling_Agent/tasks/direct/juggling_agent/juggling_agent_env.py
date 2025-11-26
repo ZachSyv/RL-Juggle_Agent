@@ -520,11 +520,16 @@ class JugglingAgentEnv(DirectRLEnv):
 
         ball_height = self.ball_pos[:, :, 2]
         is_ball_dropped = ball_height < (self.cfg.ground_height + 0.1)  # small buffer to avoid numerical issues, may need tuning
-        agent_dropped = is_ball_dropped.any(dim=1)
+        
+        #check if ball is thrown out of bounds
+        ball_dist_xy = torch.norm(self.ball_pos[:, :, :2], dim=-1)
+        is_ball_out_of_bounds = ball_dist_xy > self.cfg.out_of_bounds_radius
+        
+        agent_terminated = (is_ball_dropped | is_ball_out_of_bounds).any(dim=1)
 
         # out_of_bounds = torch.any(torch.abs(self.joint_pos[:, self.placeholder_idx1]) >= 0, dim=1)
         # out_of_bounds = out_of_bounds | torch.any(torch.abs(self.joint_pos[:, self.placeholder_idx2]) > math.pi / 2, dim=1)
-        return agent_dropped, time_out, 
+        return agent_terminated, time_out, 
         #return out_of_bounds, time_out
 
     def _build_init_joint_pose(self, hand: Articulation, targets: dict[str, float]):

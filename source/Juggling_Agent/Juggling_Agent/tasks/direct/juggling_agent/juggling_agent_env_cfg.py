@@ -238,7 +238,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     target_height = 0.5 # height at which the ball apex should be, this also definitly needs to be configured before we start
     target_rythem = 0.4 # 60/150 seconds per throw, i.e. 2.5 throws per second
     ground_height = 0.0 # should be configured to be right below where the hands can reach
-
+    out_of_bounds_radius = 2.0 # radius from the origin in the xy-plane, if a ball gets thrown beyond this, the episode terminates. Implimented to prevent the agent from launching balls and going "hey, no negative rewards were given, so I can just keep throwing them away"
     # tolerances
     sigma_rythem = 0.1
     sigma_drop_distance = 0.2
