@@ -230,8 +230,8 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     w_jitter = 0.001        # should be low to not overly discourage small adjustments, this is to prevent random drifting. Continuously added
     w_highest = 1.0        # the highest ball, small becaues it's continuously added
     w_rythem = 0.2         # should be moderate to encourage consistent timing
-    w_catch = 10.0          # should be high to strongly encourage successful catches
-    w_drop = 2.0           # should be moderate, high enough to provide guidance on where the ball should be, but smaller than catch reward
+    w_catch = 50.0          # should be high to strongly encourage successful catches
+    w_drop = 10.0           # should be moderate, high enough to provide guidance on where the ball should be, but smaller than catch reward
 
     # geometric parameters
     catch_radius = 0.1  # radius from the hand to the ball which a catch is registered, this definitly needs to be configured before we start TODO
