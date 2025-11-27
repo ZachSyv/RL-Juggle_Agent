@@ -439,7 +439,7 @@ class JugglingAgentEnv(DirectRLEnv):
         height_r = (height_cords_up - self.cfg.ground_height) * self.distance_target2ground
         height_r_norm = torch.clamp(height_r, 0.0, 1.0)
 
-        self.reward_buffer += self.cfg.w_highest * height_r_norm * one_going_up.float() * above_min_height.float()
+        self.reward_buffer += self.cfg.w_highest * height_r_norm * one_going_up.float()
 
         ###################
         # catch reward    #
