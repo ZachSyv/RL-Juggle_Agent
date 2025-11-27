@@ -423,7 +423,12 @@ class JugglingAgentEnv(DirectRLEnv):
         height_cords = ball_pos[:, :, 2]  
         vertical_velocities = ball_vel[:, :, 2]
 
-        up_mask = vertical_velocities > self.cfg.min_vertical_velocity
+        going_up = vertical_velocities > 0
+        above_min_height = height_cords > self.cfg.min_throw_height
+        is_held = self.in_hand.any(dim=2)
+        
+        up_mask = going_up & above_min_height & (~is_held)  # ball is going up, above min height, and not in hand
+
         one_going_up = (up_mask.sum(dim=1) == 1)  # only one ball is going up
         index_going_up = torch.argmax(up_mask.float(), dim=1)
 
