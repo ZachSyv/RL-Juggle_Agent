@@ -433,17 +433,13 @@ class JugglingAgentEnv(DirectRLEnv):
         index_going_up = torch.argmax(up_mask.float(), dim=1)
 
         # check to see if the ball going up is in the air (not in hand)
-        # batch_ids = torch.arange(num_envs, device=device)
-        # height_cords_up = height_cords[batch_ids, index_going_up]
-        height_cords_up = torch.gather(height_cords, 1, index_going_up.unsqueeze(1)).squeeze(1)
-
-        above_min = height_cords_up > self.cfg.min_throw_height
+        height_cords_up = (height_cords * up_mask.float()).sum(dim=1)
 
         # Use clip for height reward, should be nicer for early lerning but maybe switch to Gaussian if not working well?
         height_r = (height_cords_up - self.cfg.ground_height) * self.distance_target2ground
         height_r_norm = torch.clamp(height_r, 0.0, 1.0)
 
-        self.reward_buffer += self.cfg.w_highest * height_r_norm * one_going_up.float() * above_min.float()
+        self.reward_buffer += self.cfg.w_highest * height_r_norm * one_going_up.float() * above_min_height.float()
 
         ###################
         # catch reward    #
