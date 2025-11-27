@@ -605,11 +605,29 @@ class JugglingAgentEnv(DirectRLEnv):
         # if env_ids is None:
         #     env_ids = self.left_hand._ALL_INDICES
         super()._reset_idx(env_ids)
-
+        
+        if env_ids is None:
+            env_ids = torch.arange(self.num_envs, device=self.device)
+        # Reset hand joints
         self._apply_init_joint_pose(self.left_hand, self.init_left_joint_pos, env_ids)
-        self._apply_init_joint_pose(self.right_hand, self.init_right_joint_pos, env_ids)
+        self._apply_init_joint_pose(self.right_hand, self.init_right_joint_pos, env_ids)       
 
+        # Reset positions of balls
         self._reset_ball_pos(env_ids)
+        self.ball_peak_height[env_ids] = 0.0
+        
+        # Reset tracking variables
+        self.catch_events[env_ids] = -1
+        self.drop_events[env_ids] = -1
+        self.throw_events[env_ids] = -1
+        self.prev_in_hand[env_ids] = False
+        
+        self.prev_actions[env_ids] = 0.0
+        self.actions[env_ids] = 0.0
+        
+        # Reset timers
+        self.throw_last_time[env_ids] = 0.0
+        self.throw_intervals[env_ids] = 0.0
 
         # joint_pos = self.left_hand.data.default_joint_pos[env_ids]
         # joint_pos[:, self.placeholder_idx2] += sample_uniform(
@@ -632,22 +650,5 @@ class JugglingAgentEnv(DirectRLEnv):
         
         # env_ids = env_ids.to(self.device)
         #
-        # # Reset positions of balls
-        # #self.ball_pos[env_ids] = 
-        # self.ball_vel[env_ids] = 0
-        # self.ball_peak_height[env_ids] = 0
-        #
-        # # Reset tracking variables
-        # self.catch_events[env_ids] = -1
-        # self.drop_events[env_ids] = -1
-        # self.throw_events[env_ids] = -1
-        # self.prev_in_hand[env_ids] = False
-        #
-        # self.prev_actions[env_ids] = 0
-        # self.actions[env_ids] = 0
-        #
-        # # Reset timers
-        # self.throw_last_time[env_ids] = 0
-        # self.throw_intervals[env_ids] = 0
-        #
-        # return super().reset_idx(env_ids)
+        
+        #return super().reset_idx(env_ids)
