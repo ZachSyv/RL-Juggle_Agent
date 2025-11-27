@@ -70,13 +70,13 @@ def get_hand_cfg(prim_name, usd_file_name, pos, rot, joint_pos):
                 },
                 stiffness={
                     "WRJ.*": 5.0,
-                    "(FF|MF|RF|LF|TH)J(4|3|2|1)": 1.0,
-                    "(LF|TH)J5": 1.0,
-                    "elbow_(rotate|bend)": 1.0
+                    "(FF|MF|RF|LF|TH)J(4|3|2|1)": 5.0,
+                    "(LF|TH)J5": 5.0,
+                    "elbow_(rotate|bend)": 10.0
                 },
                 damping={
                     "WRJ.*": 0.5,
-                    "(FF|MF|RF|LF|TH)J(4|3|2|1)": 0.1,
+                    "(FF|MF|RF|LF|TH)J(4|3|2|1)": 0.5,
                     "(LF|TH)J5": 0.1,
                     "elbow_(rotate|bend)": 1.0
                 },
