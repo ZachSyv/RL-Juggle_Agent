@@ -94,9 +94,17 @@ def get_ball_cfg(prim_name, radius, pos):
         spawn=sim_utils.SphereCfg(
             radius=radius,
             mass_props=sim_utils.MassPropertiesCfg(mass=0.05),
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                friction_combine_mode="max",     # Use the stickiest value of the two touching objects
+                restitution_combine_mode="min",  # Use the least bouncy value of the two touching objects
+            ),
             collision_props=sim_utils.CollisionPropertiesCfg(),
             visual_material=sim_utils.materials.PreviewSurfaceCfg(diffuse_color=(0.95, 0.9, 0.6)),
+            physics_material=sim_utils.RigidBodyMaterialCfg(
+                static_friction=1.0,   # make it stickier for learning purposes
+                dynamic_friction=1.0,  # make it less slidey for learning purposes
+                restitution=0.0,       # 0.0 = No bounce, like a beanbag
+            ),
         )
     )
     return ball_cfg
