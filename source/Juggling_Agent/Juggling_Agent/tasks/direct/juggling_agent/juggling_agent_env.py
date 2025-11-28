@@ -56,6 +56,15 @@ class JugglingAgentEnv(DirectRLEnv):
         self.ball_anchors = torch.tensor(self.cfg.ball_anchor, device=self.device, dtype=torch.long)
         self.hand_bases = torch.tensor(self.cfg.hand_pos, device=self.device, dtype=torch.float32)
 
+        # palm_L_ids, _ = self.left_hand.find_bodies(".*palm")
+        # palm_R_ids, _ = self.right_hand.find_bodies(".*palm")
+        # middle finger base connection is better reference for hand center
+        palm_L_ids, _ = self.left_hand.find_bodies(".*mfproximal")
+        palm_R_ids, _ = self.right_hand.find_bodies(".*mfproximal")
+        
+        self.left_palm_idx = palm_L_ids[0]
+        self.right_palm_idx = palm_R_ids[0]
+
         self.init_ball_pos = torch.tensor(self.cfg.init_ball_pos, device=device, dtype=torch.float32)
         # assert self.cfg.action_space == len(self.left_hand_idx) + len(self.right_hand_idx), 'action dim mismatch'
 
@@ -196,8 +205,11 @@ class JugglingAgentEnv(DirectRLEnv):
         self.joint_vel[:, :hand_split] = left_vel
         self.joint_vel[:, hand_split:] = right_vel
 
-        self.hand_pos[:, 0] = self.left_hand.data.root_pos_w
-        self.hand_pos[:, 1] = self.right_hand.data.root_pos_w
+        # this was tracking the elbow, not the hand
+        # self.hand_pos[:, 0] = self.left_hand.data.root_pos_w
+        # self.hand_pos[:, 1] = self.right_hand.data.root_pos_w
+        self.hand_pos[:, 0] = self.left_hand.data.body_pos_w[:, self.left_palm_idx]
+        self.hand_pos[:, 1] = self.right_hand.data.body_pos_w[:, self.right_palm_idx]
 
         self.ball_pos = torch.stack([ball.data.root_pos_w for ball in self.balls], dim=1)
         self.ball_vel = torch.stack([ball.data.root_vel_w[:, :3] for ball in self.balls], dim=1)
@@ -650,5 +662,22 @@ class JugglingAgentEnv(DirectRLEnv):
         
         # env_ids = env_ids.to(self.device)
         #
-        
-        #return super().reset_idx(env_ids)
+        # # Reset positions of balls
+        # #self.ball_pos[env_ids] = 
+        # self.ball_vel[env_ids] = 0
+        # self.ball_peak_height[env_ids] = 0
+        #
+        # # Reset tracking variables
+        # self.catch_events[env_ids] = -1
+        # self.drop_events[env_ids] = -1
+        # self.throw_events[env_ids] = -1
+        # self.prev_in_hand[env_ids] = False
+        #
+        # self.prev_actions[env_ids] = 0
+        # self.actions[env_ids] = 0
+        #
+        # # Reset timers
+        # self.throw_last_time[env_ids] = 0
+        # self.throw_intervals[env_ids] = 0
+        #
+        # return super().reset_idx(env_ids)
