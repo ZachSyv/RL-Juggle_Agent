@@ -58,7 +58,7 @@ params:
     normalize_advantage: True
     gamma: 0.99
     tau : 0.95
-    learning_rate: 3e-4 # original 5e-4, make it a bit lower for stability
+    learning_rate: 1e-4 # original 5e-4, make it a bit lower for stability
     lr_schedule: adaptive
     kl_threshold: 0.008
     score_to_win: 20000
@@ -71,7 +71,7 @@ params:
     e_clip: 0.2
     horizon_length: 120 # ~= 4 seconds, needs to see longer horizon for juggling, originally 32
     minibatch_size: 16384 # IMPORTANT: change whenever you change num envs, originally 16384, if you have 4096 envs, set to 4096*8 = 32768
-    mini_epochs: 8
+    mini_epochs: 5
     critic_coef: 4
     clip_value: True
     seq_length: 4
