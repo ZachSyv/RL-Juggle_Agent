@@ -177,7 +177,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
         "LFJ5": math.radians(4.0),
     }
 
-    hand_pos = [(0, -0.5, 0.4), (0, 0.5, 0.4)]
+    hand_pos = [(0, -0.3, 0.4), (0, 0.3, 0.4)]
 
     # ball spawn offsets relative to hands (x, y, z)
     # first two relative to left hand, third relative to right hand
