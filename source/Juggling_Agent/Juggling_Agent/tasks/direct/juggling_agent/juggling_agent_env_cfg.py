@@ -236,7 +236,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     # reward weights
     w_hoarding = 0.5        # should be high to strongly discourage hoarding 2 balls in one hand
     w_jitter = 0.001        # should be low to not overly discourage small adjustments, this is to prevent random drifting. Continuously added
-    w_highest = 1.0        # the highest ball, small becaues it's continuously added
+    w_highest = 1.5        # the highest ball, small becaues it's continuously added
     w_rythem = 0.2         # should be moderate to encourage consistent timing
     w_catch = 50.0          # should be high to strongly encourage successful catches
     w_drop = 10.0           # should be moderate, high enough to provide guidance on where the ball should be, but smaller than catch reward
