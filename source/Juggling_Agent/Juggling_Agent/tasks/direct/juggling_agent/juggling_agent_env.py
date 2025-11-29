@@ -344,13 +344,14 @@ class JugglingAgentEnv(DirectRLEnv):
 
         caught = self.in_hand
 
-        balls_caught = caught.any(dim=2)  # shape (num_envs, num_balls)
-        envs_caught = balls_caught.any(dim=1)
+        valid_throw = self.ball_peak_height > self.cfg.min_throw_height
+        valid_catch = caught.any(dim=2) & valid_throw
+
+        envs_caught = valid_catch.any(dim=1)
 
         if envs_caught.any():
             env_caught_ids = envs_caught.nonzero(as_tuple=True)[0]
-            ball_caught_ids = balls_caught[env_caught_ids].float().argmax(dim=1) # get first ball that was caught
-
+            ball_caught_ids = valid_catch[env_caught_ids].float().argmax(dim=1) # get first ball that was caught
             self.catch_events[env_caught_ids] = ball_caught_ids
 
             hand_caught = caught[env_caught_ids, ball_caught_ids]  
@@ -394,6 +395,15 @@ class JugglingAgentEnv(DirectRLEnv):
             
             self.throw_events[envs_with_throws_ids] = thrown_ball_ids
             self.ball_throw_hand[envs_with_throws_ids, thrown_ball_ids] = throw_hand_idx
+
+            current_time = self.episode_length_buf[envs_with_throws_ids] * self.step_dt
+            
+            # 2. Calculate interval since the LAST throw (delta_t)
+            # This is what the reward function reads
+            self.throw_intervals[envs_with_throws_ids] = current_time - self.throw_last_time[envs_with_throws_ids]
+            
+            # 3. Update the "Last Time" to now (for the next throw)
+            self.throw_last_time[envs_with_throws_ids] = current_time
 
 
         # update prev_in_hand, we need to know if the ball was in hand in the previous step to detect throw events
@@ -492,7 +502,8 @@ class JugglingAgentEnv(DirectRLEnv):
         vertical_velocities = ball_vel[:, :, 2]
 
         going_up = vertical_velocities > 0
-        above_min_height = height_cords > self.cfg.min_throw_height
+        # above_min_height = height_cords > self.cfg.min_throw_height
+        above_min_height = height_cords > 0 # disable min height, we already use is_held to prevent rewarding balls that are still in hand
         is_held = self.in_hand.any(dim=2)
         
         up_mask = going_up & above_min_height & (~is_held)  # ball is going up, above min height, and not in hand
@@ -540,6 +551,9 @@ class JugglingAgentEnv(DirectRLEnv):
             catch_r = self.cfg.w_catch * Gh * cross
             self.reward_buffer[batch] += catch_r
 
+            # reset the peak height for the caught ball
+            self.ball_peak_height[batch, ball_id] = self.ball_pos[batch, ball_id, 2]
+
         ###################
         # drop reward  #
         ###################
@@ -563,6 +577,9 @@ class JugglingAgentEnv(DirectRLEnv):
 
             drop_r = self.cfg.w_drop * Gh * Gd
             self.reward_buffer[batch] += drop_r
+
+            # reset the peak height for the dropped ball
+            self.ball_peak_height[batch, ball_id] = self.ball_pos[batch, ball_id, 2]
 
 
         ###################
