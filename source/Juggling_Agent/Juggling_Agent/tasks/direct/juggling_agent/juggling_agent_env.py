@@ -283,9 +283,9 @@ class JugglingAgentEnv(DirectRLEnv):
             dim=1,
         )
         observations = {"policy": obs}
-        if torch.isnan(obs).any() or torch.isinf(obs).any():
-            print("[WARNING] NaN/Inf detected in observations! Clamping to zero.")
-            obs = torch.nan_to_num(obs, nan=0.0, posinf=0.0, neginf=0.0)
+        # if torch.isnan(obs).any() or torch.isinf(obs).any():
+        #     print("[WARNING] NaN/Inf detected in observations! Clamping to zero.")
+        #     obs = torch.nan_to_num(obs, nan=0.0, posinf=0.0, neginf=0.0)
             
         observations = {"policy": obs}
         return observations
@@ -467,7 +467,7 @@ class JugglingAgentEnv(DirectRLEnv):
             # gets the ball that was thrown
             drop_mask = valid_drop[env_dropped_ids]
             throw_times = self.ball_throw_time[env_dropped_ids]
-            mask = torch.where(drop_mask, throw_times.unsqueeze(-1), 1e9)
+            mask = torch.where(drop_mask, throw_times, 1e9)
             dropped_ball_ids = mask.argmin(dim=1)
 
             self.drop_events[env_dropped_ids] = dropped_ball_ids
