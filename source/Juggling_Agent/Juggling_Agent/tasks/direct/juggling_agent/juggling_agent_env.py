@@ -285,12 +285,17 @@ class JugglingAgentEnv(DirectRLEnv):
         self.drop_events[:] = -1
         self.throw_events[:] = -1
 
-        distance_to_hand = torch.norm(
-            self.ball_pos.unsqueeze(2) - self.hand_pos.unsqueeze(1), # unsqueeze for broadcasting, unsqueeze ball_pos from (num_envs, num_balls, 3) to (num_envs, num_balls, 1, 3), unsqueeze hand_pos
-            dim=-1)
+        # distance_to_hand = torch.norm(
+        #     self.ball_pos.unsqueeze(2) - self.hand_pos.unsqueeze(1), # unsqueeze for broadcasting, unsqueeze ball_pos from (num_envs, num_balls, 3) to (num_envs, num_balls, 1, 3), unsqueeze hand_pos
+        #     dim=-1)
 
-        self.in_hand = distance_to_hand < self.cfg.catch_radius
-
+        # self.in_hand = distance_to_hand < self.cfg.catch_radius
+        diff = self.ball_pos.unsqueeze(2) - self.hand_pos.unsqueeze(1)
+        distance_to_hand = torch.norm(diff, dim=-1)
+        height_diff = diff[..., 2]
+        is_close = distance_to_hand < self.cfg.catch_radius
+        is_above = height_diff > -0.02  # Clip off the bottom 1/3 of the sphere
+        self.in_hand = is_close & is_above
         ###############
         # Detect drop #
         ###############
