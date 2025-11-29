@@ -138,9 +138,9 @@ class JugglingAgentEnv(DirectRLEnv):
 
     def _apply_action(self) -> None:
         self.left_hand.set_joint_effort_target(
-            self.actions[:, assign_bias(self.left_hand_bias, self.left_hand_idx)] * 2, joint_ids=self.left_hand_idx)
+            self.actions[:, assign_bias(self.left_hand_bias, self.left_hand_idx)] * 1, joint_ids=self.left_hand_idx)
         self.right_hand.set_joint_effort_target(
-            self.actions[:, assign_bias(self.right_hand_bias, self.right_hand_idx)] * 2, joint_ids=self.right_hand_idx)
+            self.actions[:, assign_bias(self.right_hand_bias, self.right_hand_idx)] * 1, joint_ids=self.right_hand_idx)
         []
     
     def _allocate_tensors(self):
