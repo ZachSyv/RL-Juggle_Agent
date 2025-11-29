@@ -54,7 +54,7 @@ def get_hand_cfg(prim_name, usd_file_name, pos, rot, joint_pos):
         actuators={
             "fingers": ImplicitActuatorCfg(
                 joint_names_expr=["WR.*", "(FF|MF|RF|LF|TH)J(4|3|2|1)", "(LF|TH)J5", "elbow_(rotate|bend)"],
-                effort_limit={
+                effort_limit_sim={
                     "WRJ2": 4.785,
                     "WRJ1": 2.175,
                     "(FF|MF|RF|LF)J1": 0.7245,
