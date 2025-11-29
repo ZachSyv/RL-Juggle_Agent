@@ -453,8 +453,11 @@ class JugglingAgentEnv(DirectRLEnv):
         height_cords_up = (height_cords * up_mask.float()).sum(dim=1)
 
         # Use clip for height reward, should be nicer for early lerning but maybe switch to Gaussian if not working well?
-        height_r = (height_cords_up - self.cfg.ground_height) * self.distance_target2ground
-        height_r_norm = torch.clamp(height_r, 0.0, 1.0)
+        # height_r = (height_cords_up - self.cfg.ground_height) * self.distance_target2ground
+        # height_r_norm = torch.clamp(height_r, 0.0, 1.0)
+
+        # height Gaussian reward
+        height_r_norm = torch.exp((height_cords_up - self.cfg.target_height).square() * self.sigma_apex_height_coeff)
 
         self.reward_buffer += self.cfg.w_highest * height_r_norm * one_going_up.float()
 
