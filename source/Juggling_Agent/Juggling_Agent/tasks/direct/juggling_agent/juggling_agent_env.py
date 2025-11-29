@@ -59,11 +59,24 @@ class JugglingAgentEnv(DirectRLEnv):
         # palm_L_ids, _ = self.left_hand.find_bodies(".*palm")
         # palm_R_ids, _ = self.right_hand.find_bodies(".*palm")
         # middle finger base connection is better reference for hand center
-        palm_L_ids, _ = self.left_hand.find_bodies(".*mfproximal")
-        palm_R_ids, _ = self.right_hand.find_bodies(".*mfproximal")
+        # palm_L_ids, _ = self.left_hand.find_bodies(".*mfproximal")
+        # palm_R_ids, _ = self.right_hand.find_bodies(".*mfproximal")
         
-        self.left_palm_idx = palm_L_ids[0]
-        self.right_palm_idx = palm_R_ids[0]
+        # self.left_palm_idx = palm_L_ids[0]
+        # self.right_palm_idx = palm_R_ids[0]
+
+        wrist_L_ids, _ = self.left_hand.find_bodies(".*palm")
+        wrist_R_ids, _ = self.right_hand.find_bodies(".*palm")
+        
+        self.left_wrist_idx = wrist_L_ids[0]
+        self.right_wrist_idx = wrist_R_ids[0]
+
+        # 2. Find Knuckle (Top of Palm)
+        knuckle_L_ids, _ = self.left_hand.find_bodies(".*mfproximal")
+        knuckle_R_ids, _ = self.right_hand.find_bodies(".*mfproximal")
+        
+        self.left_knuckle_idx = knuckle_L_ids[0]
+        self.right_knuckle_idx = knuckle_R_ids[0]
 
         self.init_ball_pos = torch.tensor(self.cfg.init_ball_pos, device=device, dtype=torch.float32)
         # assert self.cfg.action_space == len(self.left_hand_idx) + len(self.right_hand_idx), 'action dim mismatch'
@@ -137,11 +150,33 @@ class JugglingAgentEnv(DirectRLEnv):
         self.actions = actions.clone()
 
     def _apply_action(self) -> None:
-        self.left_hand.set_joint_effort_target(
-            self.actions[:, assign_bias(self.left_hand_bias, self.left_hand_idx)] * 1, joint_ids=self.left_hand_idx)
-        self.right_hand.set_joint_effort_target(
-            self.actions[:, assign_bias(self.right_hand_bias, self.right_hand_idx)] * 1, joint_ids=self.right_hand_idx)
-        []
+        # 1. Hyperparameter: Smoothing Factor (Alpha)
+        # 0.0 = Frozen, 1.0 = No Smoothing. 
+        # 0.6 is a good balance for snappy but smooth motion.
+        alpha = 0.6 
+        
+        # 2. Apply Low-Pass Filter
+        # New Target = 60% New Command + 40% Old Command
+        current_action = self.actions.clone()
+        if not hasattr(self, 'actions_smooth'):
+            self.actions_smooth = torch.zeros_like(current_action)
+            
+        self.actions_smooth = alpha * current_action + (1.0 - alpha) * self.actions_smooth
+
+        # 3. Slice and Apply the SMOOTH actions
+        num_left = len(self.left_hand_idx)
+        
+        # Use actions_smooth here instead of self.actions!
+        left_action = self.actions_smooth[:, :num_left] * 1.0 # Keep scale at 1.0
+        right_action = self.actions_smooth[:, num_left:] * 1.0 
+
+        self.left_hand.set_joint_effort_target(left_action, joint_ids=self.left_hand_idx)
+        self.right_hand.set_joint_effort_target(right_action, joint_ids=self.right_hand_idx)
+        # self.left_hand.set_joint_effort_target(
+        #     self.actions[:, assign_bias(self.left_hand_bias, self.left_hand_idx)] * 1, joint_ids=self.left_hand_idx)
+        # self.right_hand.set_joint_effort_target(
+        #     self.actions[:, assign_bias(self.right_hand_bias, self.right_hand_idx)] * 1, joint_ids=self.right_hand_idx)
+        # []
     
     def _allocate_tensors(self):
 
@@ -208,8 +243,19 @@ class JugglingAgentEnv(DirectRLEnv):
         # this was tracking the elbow, not the hand
         # self.hand_pos[:, 0] = self.left_hand.data.root_pos_w
         # self.hand_pos[:, 1] = self.right_hand.data.root_pos_w
-        self.hand_pos[:, 0] = self.left_hand.data.body_pos_w[:, self.left_palm_idx]
-        self.hand_pos[:, 1] = self.right_hand.data.body_pos_w[:, self.right_palm_idx]
+        l_wrist = self.left_hand.data.body_pos_w[:, self.left_wrist_idx]
+        r_wrist = self.right_hand.data.body_pos_w[:, self.right_wrist_idx]
+        
+        l_knuckle = self.left_hand.data.body_pos_w[:, self.left_knuckle_idx]
+        r_knuckle = self.right_hand.data.body_pos_w[:, self.right_knuckle_idx]
+
+        # TUNABLE OFFSET: How far forward is the center?
+        # 0.8 means "80% of the way from wrist to knuckle"
+        # This shifts the center back by ~2cm compared to just tracking the knuckle.
+        bias = 0.775 
+
+        self.hand_pos[:, 0] = (l_wrist * (1 - bias)) + (l_knuckle * bias)
+        self.hand_pos[:, 1] = (r_wrist * (1 - bias)) + (r_knuckle * bias)
 
         self.ball_pos = torch.stack([ball.data.root_pos_w for ball in self.balls], dim=1)
         self.ball_vel = torch.stack([ball.data.root_vel_w[:, :3] for ball in self.balls], dim=1)
@@ -453,11 +499,11 @@ class JugglingAgentEnv(DirectRLEnv):
         height_cords_up = (height_cords * up_mask.float()).sum(dim=1)
 
         # Use clip for height reward, should be nicer for early lerning but maybe switch to Gaussian if not working well?
-        # height_r = (height_cords_up - self.cfg.ground_height) * self.distance_target2ground
-        # height_r_norm = torch.clamp(height_r, 0.0, 1.0)
+        height_r = (height_cords_up - self.cfg.ground_height) * self.distance_target2ground
+        height_r_norm = torch.clamp(height_r, 0.0, 1.0)
 
         # height Gaussian reward
-        height_r_norm = torch.exp((height_cords_up - self.cfg.target_height).square() * self.sigma_apex_height_coeff)
+        #height_r_norm = torch.exp((height_cords_up - self.cfg.target_height).square() * self.sigma_apex_height_coeff)
 
         self.reward_buffer += self.cfg.w_highest * height_r_norm * one_going_up.float()
 
@@ -644,6 +690,10 @@ class JugglingAgentEnv(DirectRLEnv):
         
         self.prev_actions[env_ids] = 0.0
         self.actions[env_ids] = 0.0
+
+        if not hasattr(self, 'actions_smooth'):
+            self.actions_smooth = torch.zeros_like(self.actions)
+        self.actions_smooth[env_ids] = 0.0
         
         # Reset timers
         self.throw_last_time[env_ids] = 0.0

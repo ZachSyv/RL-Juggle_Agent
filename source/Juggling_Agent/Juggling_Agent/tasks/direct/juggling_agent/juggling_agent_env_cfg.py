@@ -241,8 +241,8 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     w_drop = 10.0           # should be moderate, high enough to provide guidance on where the ball should be, but smaller than catch reward
 
     # geometric parameters
-    catch_radius = 0.09  # radius from the hand to the ball which a catch is registered, this definitly needs to be configured before we start TODO
-    target_height = 1.0 # height at which the ball apex should be, this also definitly needs to be configured before we start TODO
+    catch_radius = 0.0675  # radius from the hand to the ball which a catch is registered, this definitly needs to be configured before we start TODO
+    target_height = 0.95 # height at which the ball apex should be, this also definitly needs to be configured before we start TODO
     target_rythem = 0.4 # 60/150 seconds per throw, i.e. 2.5 throws per second
     ground_height = 0.0
     out_of_bounds_radius = 2.0 # radius from the origin in the xy-plane, if a ball gets thrown beyond this, the episode terminates. Implimented to prevent the agent from launching balls and going "hey, no negative rewards were given, so I can just keep throwing them away"
