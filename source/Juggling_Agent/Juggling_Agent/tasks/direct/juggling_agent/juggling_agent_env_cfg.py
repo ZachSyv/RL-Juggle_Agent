@@ -113,7 +113,7 @@ def get_ball_cfg(prim_name, radius, pos):
 class JugglingAgentEnvCfg(DirectRLEnvCfg):
     # env
     decimation = 2
-    episode_length_s = 5.0
+    episode_length_s = 7.0
 
     # - spaces definition
     num_balls = 3
@@ -233,10 +233,10 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=2048, env_spacing=4.0, replicate_physics=True) # increase num envs to 4096 if you have more GPU memory
 
     # reward weights
-    w_hoarding = 0.5        # should be high to strongly discourage hoarding 2 balls in one hand
+    w_hoarding = 2.0        # should be high to strongly discourage hoarding 2 balls in one hand
     w_jitter = 0.05        # should be low to not overly discourage small adjustments, this is to prevent random drifting. Continuously added
-    w_highest = 1.5        # the highest ball, small becaues it's continuously added
-    w_rythem = 0.2         # should be moderate to encourage consistent timing
+    w_highest = 2.5        # the highest ball, small becaues it's continuously added
+    w_rythem = 1.0         # should be moderate to encourage consistent timing
     w_catch = 50.0          # should be high to strongly encourage successful catches
     w_drop = 10.0           # should be moderate, high enough to provide guidance on where the ball should be, but smaller than catch reward
 
@@ -247,9 +247,9 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     ground_height = 0.0
     out_of_bounds_radius = 2.0 # radius from the origin in the xy-plane, if a ball gets thrown beyond this, the episode terminates. Implimented to prevent the agent from launching balls and going "hey, no negative rewards were given, so I can just keep throwing them away"
     # tolerances
-    sigma_rythem = 0.1
+    sigma_rythem = 0.2
     sigma_drop_distance = 0.2
-    sigma_apex_height = 0.1
+    sigma_apex_height = 0.15
     
     min_throw_height = 0.575 # minimum height a ball must reach to be considered a valid throw, done to prevent micro-throws. Set to 0.1 above the hand height
-    min_vertical_velocity = 0.0 # minimum vertical velocity at throw time to be considered a valid throw
+    min_vertical_velocity = 0.1 # minimum vertical velocity at throw time to be considered a valid throw
