@@ -227,6 +227,11 @@ class JugglingAgentEnv(DirectRLEnv):
             dim=1,
         )
         observations = {"policy": obs}
+        if torch.isnan(obs).any() or torch.isinf(obs).any():
+            print("[WARNING] NaN/Inf detected in observations! Clamping to zero.")
+            obs = torch.nan_to_num(obs, nan=0.0, posinf=0.0, neginf=0.0)
+            
+        observations = {"policy": obs}
         return observations
 
     def detect_events(self):
