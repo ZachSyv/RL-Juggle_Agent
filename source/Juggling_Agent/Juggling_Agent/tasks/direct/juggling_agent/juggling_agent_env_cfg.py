@@ -116,7 +116,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     episode_length_s = 7.0
 
     # - spaces definition
-    num_balls = 3
+    num_balls = 1
     num_hands = 2
     action_space = 52
     # observation_space = 4
@@ -247,7 +247,8 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     ground_height = 0.0
     out_of_bounds_radius = 2.0 # radius from the origin in the xy-plane, if a ball gets thrown beyond this, the episode terminates. Implimented to prevent the agent from launching balls and going "hey, no negative rewards were given, so I can just keep throwing them away"
     # tolerances
-    sigma_rythem = 0.2
+    #sigma_rythem = 0.2
+    sigma_rythem = 0.0
     sigma_drop_distance = 0.2
     sigma_apex_height = 0.15
     

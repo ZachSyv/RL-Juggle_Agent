@@ -110,15 +110,15 @@ class JugglingAgentEnv(DirectRLEnv):
         self.right_hand = Articulation(self.cfg.right_hand_cfg)
 
         self.ball1 = RigidObject(self.cfg.ball1_cfg)
-        self.ball2 = RigidObject(self.cfg.ball2_cfg)
-        self.ball3 = RigidObject(self.cfg.ball3_cfg)
+        # self.ball2 = RigidObject(self.cfg.ball2_cfg)
+        # self.ball3 = RigidObject(self.cfg.ball3_cfg)
 
         self.scene.articulations["left_hand"] = self.left_hand
         self.scene.articulations["right_hand"] = self.right_hand
 
         self.scene.rigid_objects["ball1"] = self.ball1
-        self.scene.rigid_objects["ball2"] = self.ball2
-        self.scene.rigid_objects["ball3"] = self.ball3
+        # self.scene.rigid_objects["ball2"] = self.ball2
+        # self.scene.rigid_objects["ball3"] = self.ball3
 
         # add ground plane
         spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
@@ -134,7 +134,8 @@ class JugglingAgentEnv(DirectRLEnv):
         # for i in range(self.cfg.num_balls):
         #     ball_cfg.func(f"/World/envs/env_.*/ball_{i}", ball_cfg, translation=(0.0, 0.0, 0.0))
 
-        self.balls = [self.ball1, self.ball2, self.ball3]
+        # self.balls = [self.ball1, self.ball2, self.ball3]
+        self.ball = [self.ball1]
 
         # clone and replicate
         self.scene.clone_environments(copy_from_source=False)
@@ -536,7 +537,8 @@ class JugglingAgentEnv(DirectRLEnv):
         balls_in_L = self.in_hand[:, :, 0].sum(dim=1)
         balls_in_R = self.in_hand[:, :, 1].sum(dim=1)
 
-        hoarding = (balls_in_L > 1) | (balls_in_R > 1)
+        # hoarding = (balls_in_L > 1) | (balls_in_R > 1)
+        hoarding = (balls_in_L > 0) | (balls_in_R > 0) # peniltize holding a ball
         self.reward_buffer += -self.cfg.w_hoarding * (hoarding & time_mask).float()
 
         ###################
