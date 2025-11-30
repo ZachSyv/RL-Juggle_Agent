@@ -31,7 +31,8 @@ params:
         fixed_sigma: True
     mlp:
       # units: [1024, 512, 256, 128] # needs wayyyyy more model capacity for juggling, original [32, 32]
-      units: [512, 256, 128]
+      # units: [512, 256, 128]
+      units: [256, 128]
       activation: elu
       d2rl: False
 
@@ -61,16 +62,16 @@ params:
     tau : 0.95
     learning_rate: 1e-4 # original 5e-4, make it a bit lower for stability
     lr_schedule: adaptive
-    kl_threshold: 0.008
+    kl_threshold: 0.01
     score_to_win: 20000
     max_epochs: 5000
     save_best_after: 50
     save_frequency: 25
     grad_norm: 1.0
-    entropy_coef: 0.015 # encourage exploration
+    entropy_coef: 0.02 # encourage exploration
     truncate_grads: True
     e_clip: 0.2
-    horizon_length: 128 # ~= 4 seconds, needs to see longer horizon for juggling, originally 32
+    horizon_length: 64 # ~= 4 seconds, needs to see longer horizon for juggling, originally 32
     minibatch_size: 16384 # IMPORTANT: change whenever you change num envs, originally 16384, if you have 4096 envs, set to 4096*8 = 32768
     mini_epochs: 5
     critic_coef: 4
