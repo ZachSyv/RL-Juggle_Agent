@@ -43,8 +43,8 @@ def get_hand_cfg(prim_name, usd_file_name, pos, rot, joint_pos):
             ),
             articulation_props=sim_utils.ArticulationRootPropertiesCfg(
                 enabled_self_collisions=True,
-                solver_position_iteration_count=8,
-                solver_velocity_iteration_count=0,
+                solver_position_iteration_count=12,
+                solver_velocity_iteration_count=1,
                 sleep_threshold=0.005,
                 stabilization_threshold=0.0005,
                 fix_root_link=True,
@@ -95,9 +95,7 @@ def get_ball_cfg(prim_name, radius, pos):
         spawn=sim_utils.SphereCfg(
             radius=radius,
             mass_props=sim_utils.MassPropertiesCfg(mass=0.10), # 100g, stanard lightweight juggling ball
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                enable_ccd=True,
-            ),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(),
             collision_props=sim_utils.CollisionPropertiesCfg(),
             visual_material=sim_utils.materials.PreviewSurfaceCfg(diffuse_color=(0.95, 0.9, 0.6)),
             physics_material=sim_utils.RigidBodyMaterialCfg(
@@ -127,7 +125,19 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     state_space = 0
 
     # simulation
-    sim: SimulationCfg = SimulationCfg(dt=1 / 100, render_interval=decimation)
+    sim: SimulationCfg = SimulationCfg(
+        dt=1 / 100,
+        render_interval=decimation,
+        # Recommended: Boost GPU buffers for the 2048 environments + complex hands
+        physx=sim_utils.PhysxCfg(
+            # Enable CCD globally for the scene
+            enable_ccd=True, 
+            
+            # Recommended: Boost GPU buffers for the 2048 environments + complex hands
+            gpu_max_rigid_patch_count=10 * 2**15,
+            gpu_max_rigid_contact_count=10 * 2**15,
+        )
+    )
 
     # Initial Joint Position
     left_joint_pos = {
