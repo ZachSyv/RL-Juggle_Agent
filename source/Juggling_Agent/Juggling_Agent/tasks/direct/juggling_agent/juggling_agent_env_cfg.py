@@ -121,7 +121,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     num_hands = 2
     action_space = 52
     # observation_space = 4
-    observation_space = action_space * 2 + 3 * num_balls * 2 + 7 * num_hands # 52 joint pos + 52 joint vel + 3*num_balls ball pos + 3*num_balls ball vel + 3*num_hands pos + 4*num_hands quaternion
+    observation_space = action_space * 4 + 3 * num_balls * 2 + 7 * num_hands # 52 joint pos + 52 joint vel + 3*num_balls ball pos + 3*num_balls ball vel + 3*num_hands pos + 4*num_hands quaternion
     state_space = 0
 
     # simulation
