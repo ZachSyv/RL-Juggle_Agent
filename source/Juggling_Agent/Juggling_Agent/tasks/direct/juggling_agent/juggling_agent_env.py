@@ -76,6 +76,8 @@ class JugglingAgentEnv(DirectRLEnv):
 
         self.reward_buffer = torch.zeros(self.num_envs, device=device)
 
+        self.hoarding_threshold = 0 if self.cfg.num_balls == 1 else 1
+
         self.action_dim = self.cfg.action_space
         self.actions = torch.zeros((self.num_envs, self.action_dim), device=device)
         self.prev_actions = torch.zeros((self.num_envs, self.action_dim), device=device)
@@ -437,7 +439,7 @@ class JugglingAgentEnv(DirectRLEnv):
         valid_throw = self.ball_peak_height > self.cfg.min_throw_height
 
         ball_height_pos = self.ball_pos[:, :, 2]  
-        dropped = (~self.in_hand.any(dim=2)) & (ball_height_pos < self.cfg.ground_height + 0.15 )  # small buffer to avoid numerical issues, may need tuning
+        dropped = (~self.in_hand.any(dim=2)) & (ball_height_pos < self.cfg.ground_height + 0.1 )  # small buffer to avoid numerical issues, may need tuning
 
         
         # for ball in range(self.cfg.num_balls):
@@ -505,15 +507,15 @@ class JugglingAgentEnv(DirectRLEnv):
         balls_in_L = self.in_hand[:, :, 0].sum(dim=1)
         balls_in_R = self.in_hand[:, :, 1].sum(dim=1)
 
-        ball_threshold = 0 if self.cfg.num_balls == 1 else 1
 
         # hoarding = (balls_in_L > 1) | (balls_in_R > 1)
-        is_hoarding = (balls_in_L > ball_threshold) | (balls_in_R > ball_threshold) # peniltize holding a ball
-
+        is_hoarding = (balls_in_L > self.hoarding_threshold) | (balls_in_R > self.hoarding_threshold) # peniltize holding a ball
         self.hoarding_timer[is_hoarding] += self.step_dt
         self.hoarding_timer[~is_hoarding] = 0.0
 
-        hoarding_penalty = self.cfg.w_hoarding * (self.hoarding_timer ** 2)
+        hoarding_time = torch.clamp(self.hoarding_timer - self.cfg.hoarding_time_threshold, min=0.0)
+        
+        hoarding_penalty = self.cfg.w_hoarding * (hoarding_time.square())
 
         self.reward_buffer -= hoarding_penalty
 

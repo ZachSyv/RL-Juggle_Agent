@@ -248,7 +248,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=4.0, replicate_physics=True) # increase num envs to 4096 if you have more GPU memory
 
     # reward weights
-    w_hoarding = 2.0        # should be high to strongly discourage hoarding 2 balls in one hand
+    w_hoarding = 1.5        # should be high to strongly discourage hoarding 2 balls in one hand
     w_jitter = 0.05        # should be low to not overly discourage small adjustments, this is to prevent random drifting. Continuously added
     w_highest = 2.5        # the highest ball, small becaues it's continuously added
     w_rythem = 1.0         # should be moderate to encourage consistent timing
@@ -267,6 +267,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     sigma_rythem = 0.1
     sigma_drop_distance = 0.2
     sigma_apex_height = 0.15
+    hoarding_time_threshold = 0.1 # time threshold before hoarding penalty starts to be applied
     
     min_throw_height = 0.575 # minimum height a ball must reach to be considered a valid throw, done to prevent micro-throws. Set to 0.1 above the hand height
-    min_vertical_velocity = 0.05 # minimum vertical velocity at throw time to be considered a valid throw
+    min_vertical_velocity = 0.1 # minimum vertical velocity at throw time to be considered a valid throw
