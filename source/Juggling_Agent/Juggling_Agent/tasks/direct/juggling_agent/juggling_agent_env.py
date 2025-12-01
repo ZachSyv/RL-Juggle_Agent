@@ -483,7 +483,7 @@ class JugglingAgentEnv(DirectRLEnv):
         ###################
         # hoarding penalty#
         ###################
-        # if more than one ball is in a hand after the first second, apply a penalty. This is to prevent the agent from just holding onto balls instead of juggling them
+        # if more than one ball is in a hand after the first second, begin to apply a penalty. This is to prevent the agent from just holding onto balls instead of juggling them
 
 
         # calculate if the ball is in the hand, use the catch_radius variable
@@ -500,14 +500,22 @@ class JugglingAgentEnv(DirectRLEnv):
         # I belive this works the same as the above nested loop, but takes advantage of tensor broadcasting to make it much faster
         
         # self.step_dt is automatically calculated as (sim_dt * decimation)
-        time_mask = (self.episode_length_buf * self.step_dt) > 1.0
+        #time_mask = (self.episode_length_buf * self.step_dt) > 1.0
         # in_hand is already computed in detect_events function
         balls_in_L = self.in_hand[:, :, 0].sum(dim=1)
         balls_in_R = self.in_hand[:, :, 1].sum(dim=1)
 
+        ball_threshold = 0 if self.cfg.num_balls == 1 else 1
+
         # hoarding = (balls_in_L > 1) | (balls_in_R > 1)
-        hoarding = (balls_in_L > 0) | (balls_in_R > 0) # peniltize holding a ball
-        self.reward_buffer += -self.cfg.w_hoarding * (hoarding & time_mask).float()
+        is_hoarding = (balls_in_L > ball_threshold) | (balls_in_R > ball_threshold) # peniltize holding a ball
+
+        self.hoarding_timer[is_hoarding] += self.step_dt
+        self.hoarding_timer[~is_hoarding] = 0.0
+
+        hoarding_penalty = self.cfg.w_hoarding * (self.hoarding_timer ** 2)
+
+        self.reward_buffer -= hoarding_penalty
 
         ###################
         # jitter penalty  #
