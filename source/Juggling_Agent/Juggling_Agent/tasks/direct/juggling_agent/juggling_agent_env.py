@@ -203,6 +203,10 @@ class JugglingAgentEnv(DirectRLEnv):
         self.prev_in_hand = torch.zeros((num_envs, self.cfg.num_balls, self.cfg.num_hands), device=device, dtype=torch.bool)
         self.in_hand = torch.zeros((num_envs, self.cfg.num_balls, self.cfg.num_hands), device=device, dtype=torch.bool)
 
+        self.ball_pos_flat = self.ball_pos.view(self.num_envs, -1)
+        self.ball_vel_flat = self.ball_vel.view(self.num_envs, -1)
+        self.hand_pos_flat = self.hand_pos.view(self.num_envs, -1)
+
         num_ball_up_rewards = [0.0, 1.0, 0.5, 0.0]  # index 0: 0 balls up, index 1: 1 ball up, index 2: 2 balls up, index 3: 3 balls up
         self.num_ball_up_rewards_lookup = torch.tensor(num_ball_up_rewards, device=device)
 
@@ -259,9 +263,9 @@ class JugglingAgentEnv(DirectRLEnv):
                 self.joint_vel,
                 self.prev_actions.detach(),
                 self.actions_smooth.detach(),
-                self.ball_pos.reshape(self.num_envs, -1),
-                self.ball_vel.reshape(self.num_envs, -1),
-                self.hand_pos.reshape(self.num_envs, -1),
+                self.ball_pos_flat,
+                self.ball_vel_flat,
+                self.hand_pos_flat,
                 left_quaternion,
                 right_quaternion,
             ),
@@ -552,7 +556,7 @@ class JugglingAgentEnv(DirectRLEnv):
         
         # potentially change to delta height and delta target height?
 
-        highest_ball_height = torch.clamp(highest_ball_height, min=self.cfg.ground_height, max=self.cfg.target_height)
+        highest_ball_height = highest_ball_height.clamp_(min=self.cfg.ground_height, max=self.cfg.target_height)
 
         #one_going_up = (up_mask.sum(dim=1) == 1)  # only one ball is going up
 
@@ -561,7 +565,7 @@ class JugglingAgentEnv(DirectRLEnv):
 
         # Use clip for height reward, should be nicer for early lerning but maybe switch to Gaussian if not working well?
         height_r = (highest_ball_height - self.cfg.ground_height) * self.distance_target2ground
-        height_r_norm = torch.clamp(height_r, 0.0, 1.0)
+        height_r_norm = height_r.clamp_(0.0, 1.0)
 
         # height Gaussian reward
         #height_r_norm = torch.exp((height_cords_up - self.cfg.target_height).square() * self.sigma_apex_height_coeff)
