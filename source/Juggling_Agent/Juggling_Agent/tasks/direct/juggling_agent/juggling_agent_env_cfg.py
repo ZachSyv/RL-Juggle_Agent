@@ -237,8 +237,8 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
                                   joint_pos=right_joint_pos)
 
     ball1_cfg = get_ball_cfg("ball_1", ball_radius, pos=init_ball_pos[0])
-    ball2_cfg = get_ball_cfg("ball_2", ball_radius, pos=init_ball_pos[1])
-    ball3_cfg = get_ball_cfg("ball_3", ball_radius, pos=init_ball_pos[2])
+    # ball2_cfg = get_ball_cfg("ball_2", ball_radius, pos=init_ball_pos[1])
+    # ball3_cfg = get_ball_cfg("ball_3", ball_radius, pos=init_ball_pos[2])
 
     # pdb.set_trace()
 
