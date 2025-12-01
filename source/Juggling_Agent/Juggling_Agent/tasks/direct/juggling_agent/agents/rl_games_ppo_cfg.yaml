@@ -31,8 +31,8 @@ params:
         fixed_sigma: True
     mlp:
       # units: [1024, 512, 256, 128] # needs wayyyyy more model capacity for juggling, original [32, 32]
-      # units: [512, 256, 128]
-      units: [256, 128]
+      units: [512, 256, 128]
+      #units: [256, 128]
       activation: elu
       d2rl: False
 
@@ -72,7 +72,7 @@ params:
     truncate_grads: True
     e_clip: 0.2
     horizon_length: 64 # ~= 4 seconds, needs to see longer horizon for juggling, originally 32
-    minibatch_size: 16384 # IMPORTANT: change whenever you change num envs, originally 16384, if you have 4096 envs, set to 4096*8 = 32768
+    minibatch_size: 32768 # IMPORTANT: change whenever you change num envs, originally 16384, if you have 4096 envs, set to 4096*8 = 32768
     mini_epochs: 5
     critic_coef: 4
     clip_value: True
