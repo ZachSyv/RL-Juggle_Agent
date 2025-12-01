@@ -501,21 +501,17 @@ class JugglingAgentEnv(DirectRLEnv):
         
         # I belive this works the same as the above nested loop, but takes advantage of tensor broadcasting to make it much faster
         
-        # self.step_dt is automatically calculated as (sim_dt * decimation)
-        #time_mask = (self.episode_length_buf * self.step_dt) > 1.0
         # in_hand is already computed in detect_events function
-        balls_in_L = self.in_hand[:, :, 0].sum(dim=1)
-        balls_in_R = self.in_hand[:, :, 1].sum(dim=1)
+        balls_in_L = (self.in_hand[:, :, 0]).sum(dim=1)
+        balls_in_R = (self.in_hand[:, :, 1]).sum(dim=1)
 
-
-        # hoarding = (balls_in_L > 1) | (balls_in_R > 1)
         is_hoarding = (balls_in_L > self.hoarding_threshold) | (balls_in_R > self.hoarding_threshold) # peniltize holding a ball
         self.hoarding_timer[is_hoarding] += self.step_dt
         self.hoarding_timer[~is_hoarding] = 0.0
 
         hoarding_time = torch.clamp(self.hoarding_timer - self.cfg.hoarding_time_threshold, min=0.0)
         
-        hoarding_penalty = self.cfg.w_hoarding * (hoarding_time.square())
+        hoarding_penalty = torch.clamp(self.cfg.w_hoarding * (hoarding_time.square()), max=5.0)
 
         self.reward_buffer -= hoarding_penalty
 
