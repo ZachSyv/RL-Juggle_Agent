@@ -74,7 +74,7 @@ class JugglingAgentEnv(DirectRLEnv):
         self.init_ball_pos = torch.tensor(self.cfg.init_ball_pos, device=device, dtype=torch.float32)
         # assert self.cfg.action_space == len(self.left_hand_idx) + len(self.right_hand_idx), 'action dim mismatch'
 
-        #self.reward_buffer = torch.zeros(self.num_envs, device=device)
+        self.reward_buffer = torch.zeros(self.num_envs, device=device)
 
         self.action_dim = self.cfg.action_space
         self.actions = torch.zeros((self.num_envs, self.action_dim), device=device)
@@ -126,7 +126,7 @@ class JugglingAgentEnv(DirectRLEnv):
         #     ball_cfg.func(f"/World/envs/env_.*/ball_{i}", ball_cfg, translation=(0.0, 0.0, 0.0))
 
         # self.balls = [self.ball1, self.ball2, self.ball3]
-        self.ball = [self.ball1]
+        self.balls = [self.ball1]
 
         # clone and replicate
         self.scene.clone_environments(copy_from_source=False)
@@ -145,7 +145,7 @@ class JugglingAgentEnv(DirectRLEnv):
         self.actions = actions.clone()
 
     def _apply_action(self) -> None:
-        print("Applying action:", self.actions)
+        #print("Applying action:", self.actions)
         # 1. Hyperparameter: Smoothing Factor (Alpha)
         # 0.0 = Frozen, 1.0 = No Smoothing. 
         alpha = 0.8
@@ -204,9 +204,9 @@ class JugglingAgentEnv(DirectRLEnv):
         num_ball_up_rewards = [0.0, 1.0, 0.5, 0.0]  # index 0: 0 balls up, index 1: 1 ball up, index 2: 2 balls up, index 3: 3 balls up
         self.num_ball_up_rewards_lookup = torch.tensor(num_ball_up_rewards, device=device)
 
-        self.ball_throw_time = torch.zeros((num_envs, self.cfg.num_balls), device=device)
-        self.hand_throw_last_time = torch.full((num_envs, self.cfg.num_hands), -1, device=device)
-        self.hand_throw_intervals = torch.full((num_envs, self.cfg.num_hands), -1, device=device)
+        self.ball_throw_time = torch.zeros((num_envs, self.cfg.num_balls), device=device, dtype=torch.float)
+        self.hand_throw_last_time = torch.full((num_envs, self.cfg.num_hands), -1.0, device=device, dtype=torch.float)
+        self.hand_throw_intervals = torch.full((num_envs, self.cfg.num_hands), -1.0, device=device, dtype=torch.float)
 
     def compute_target_hand_position(self, env_ids, ball_ids):
         throw_hand = self.ball_throw_hand[env_ids, ball_ids]
@@ -633,7 +633,7 @@ class JugglingAgentEnv(DirectRLEnv):
         #out_of_bounds = torch.zeros(1, dtype=torch.bool) # I don't think we need this anymore
 
         ball_height = self.ball_pos[:, :, 2]
-        is_ball_dropped = (ball_height < (self.cfg.ground_height + 0.1)) & (~self.ball_in_hand.any(dim=2))  # small buffer to avoid numerical issues, may need tuning
+        is_ball_dropped = (ball_height < (self.cfg.ground_height + 0.1)) & (~self.in_hand.any(dim=2))  # small buffer to avoid numerical issues, may need tuning
         
         #check if ball is thrown out of bounds
         relative_ball_pos = self.ball_pos - self.scene.env_origins.unsqueeze(1)
@@ -710,7 +710,11 @@ class JugglingAgentEnv(DirectRLEnv):
         #     hand_id = hand_mask.int().argmax(dim=1)  # 0 for left hand, 1 for right hand
         #     self.ball_throw_hand[env_ids, ball] = hand_id
         # I think this does the same as the above loop but faster using tensor operations
-        anchors = torch.tensor(self.cfg.ball_anchor, device=self.device, dtype=torch.long)
+        # anchors = torch.tensor(self.cfg.ball_anchor, device=self.device, dtype=torch.long)
+        # self.ball_throw_hand[env_ids] = anchors[None, :].expand(len(env_ids), -1)
+        active_anchors = self.cfg.ball_anchor[:self.cfg.num_balls]
+        
+        anchors = torch.tensor(active_anchors, device=self.device, dtype=torch.long)
         self.ball_throw_hand[env_ids] = anchors[None, :].expand(len(env_ids), -1)
         
         self.ball_catch_hand[env_ids] = -1  # reset to -1 (no catch)
