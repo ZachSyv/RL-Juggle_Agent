@@ -236,7 +236,8 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=2048, env_spacing=4.0, replicate_physics=True) # increase num envs to 4096 if you have more GPU memory
 
     # reward weights
-    w_hoarding = 2.0        # should be high to strongly discourage hoarding 2 balls in one hand
+    #w_hoarding = 2.0        # should be high to strongly discourage hoarding 2 balls in one hand
+    w_hoarding = 0.5 # needs to be much smalelr for single ball case
     w_jitter = 0.05        # should be low to not overly discourage small adjustments, this is to prevent random drifting. Continuously added
     w_highest = 2.5        # the highest ball, small becaues it's continuously added
     w_rythem = 1.0         # should be moderate to encourage consistent timing
