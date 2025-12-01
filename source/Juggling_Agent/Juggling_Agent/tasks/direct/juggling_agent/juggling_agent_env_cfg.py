@@ -43,8 +43,8 @@ def get_hand_cfg(prim_name, usd_file_name, pos, rot, joint_pos):
             ),
             articulation_props=sim_utils.ArticulationRootPropertiesCfg(
                 enabled_self_collisions=True,
-                solver_position_iteration_count=8,
-                solver_velocity_iteration_count=0,
+                solver_position_iteration_count=12,
+                solver_velocity_iteration_count=1,
                 sleep_threshold=0.005,
                 stabilization_threshold=0.0005,
                 fix_root_link=True,
@@ -95,9 +95,7 @@ def get_ball_cfg(prim_name, radius, pos):
         spawn=sim_utils.SphereCfg(
             radius=radius,
             mass_props=sim_utils.MassPropertiesCfg(mass=0.10), # 100g, stanard lightweight juggling ball
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                enable_ccd=True,
-            ),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(),
             collision_props=sim_utils.CollisionPropertiesCfg(),
             visual_material=sim_utils.materials.PreviewSurfaceCfg(diffuse_color=(0.95, 0.9, 0.6)),
             physics_material=sim_utils.RigidBodyMaterialCfg(
@@ -123,11 +121,25 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     num_hands = 2
     action_space = 52
     # observation_space = 4
-    observation_space = action_space * 2 + 3 * num_balls * 2 + 7 * num_hands # 52 joint pos + 52 joint vel + 3*num_balls ball pos + 3*num_balls ball vel + 3*num_hands pos + 4*num_hands quaternion
+    observation_space = action_space * 4 + 3 * num_balls * 2 + 7 * num_hands # 52 joint pos + 52 joint vel + 3*num_balls ball pos + 3*num_balls ball vel + 3*num_hands pos + 4*num_hands quaternion
     state_space = 0
 
     # simulation
-    sim: SimulationCfg = SimulationCfg(dt=1 / 100, render_interval=decimation)
+    sim: SimulationCfg = SimulationCfg(
+        dt=1 / 100,
+        render_interval=decimation,
+        # Recommended: Boost GPU buffers for the 2048 environments + complex hands
+        physx=sim_utils.PhysxCfg(
+            # Enable CCD globally for the scene
+            enable_ccd=True, 
+            
+            # Recommended: Boost GPU buffers for the 2048 environments + complex hands
+            gpu_max_rigid_patch_count=10 * 2**16,
+            gpu_max_rigid_contact_count=10 * 2**16,
+            gpu_found_lost_rigid_contact_count=10 * 2**16,
+            gpu_found_lost_aggregate_pair_count=10 * 2**16,
+        )
+    )
 
     # Initial Joint Position
     left_joint_pos = {
@@ -227,17 +239,16 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
                                   joint_pos=right_joint_pos)
 
     ball1_cfg = get_ball_cfg("ball_1", ball_radius, pos=init_ball_pos[0])
-    ball2_cfg = get_ball_cfg("ball_2", ball_radius, pos=init_ball_pos[1])
-    ball3_cfg = get_ball_cfg("ball_3", ball_radius, pos=init_ball_pos[2])
+    # ball2_cfg = get_ball_cfg("ball_2", ball_radius, pos=init_ball_pos[1])
+    # ball3_cfg = get_ball_cfg("ball_3", ball_radius, pos=init_ball_pos[2])
 
     # pdb.set_trace()
 
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=2048, env_spacing=4.0, replicate_physics=True) # increase num envs to 4096 if you have more GPU memory
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=4.0, replicate_physics=True) # increase num envs to 4096 if you have more GPU memory
 
     # reward weights
-    #w_hoarding = 2.0        # should be high to strongly discourage hoarding 2 balls in one hand
-    w_hoarding = 0.5 # needs to be much smalelr for single ball case
+    w_hoarding = 1.5        # should be high to strongly discourage hoarding 2 balls in one hand
     w_jitter = 0.05        # should be low to not overly discourage small adjustments, this is to prevent random drifting. Continuously added
     w_highest = 2.5        # the highest ball, small becaues it's continuously added
     w_rythem = 1.0         # should be moderate to encourage consistent timing
@@ -253,9 +264,10 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     out_of_bounds_radius = 2.0 # radius from the origin in the xy-plane, if a ball gets thrown beyond this, the episode terminates. Implimented to prevent the agent from launching balls and going "hey, no negative rewards were given, so I can just keep throwing them away"
     # tolerances
     #sigma_rythem = 0.2
-    sigma_rythem = 0.0
+    sigma_rythem = 0.1
     sigma_drop_distance = 0.2
     sigma_apex_height = 0.15
+    hoarding_time_threshold = 0.1 # time threshold before hoarding penalty starts to be applied
     
     min_throw_height = 0.575 # minimum height a ball must reach to be considered a valid throw, done to prevent micro-throws. Set to 0.1 above the hand height
-    min_vertical_velocity = 0.05 # minimum vertical velocity at throw time to be considered a valid throw
+    min_vertical_velocity = 0.1 # minimum vertical velocity at throw time to be considered a valid throw
