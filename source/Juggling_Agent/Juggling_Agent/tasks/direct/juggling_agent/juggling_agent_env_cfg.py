@@ -39,7 +39,7 @@ def get_hand_cfg(prim_name, usd_file_name, pos, rot, joint_pos):
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 disable_gravity=True,
                 retain_accelerations=True,
-                max_depenetration_velocity=1000.0,
+                max_depenetration_velocity=10.0,
             ),
             articulation_props=sim_utils.ArticulationRootPropertiesCfg(
                 enabled_self_collisions=True,
@@ -47,9 +47,10 @@ def get_hand_cfg(prim_name, usd_file_name, pos, rot, joint_pos):
                 solver_velocity_iteration_count=0,
                 sleep_threshold=0.005,
                 stabilization_threshold=0.0005,
+                fix_root_link=True,
             ),
             joint_drive_props=sim_utils.JointDrivePropertiesCfg(drive_type="force"),
-            fixed_tendons_props=sim_utils.FixedTendonPropertiesCfg(limit_stiffness=30.0, damping=0.1),
+            fixed_tendons_props=sim_utils.FixedTendonPropertiesCfg(limit_stiffness=30.0, damping=1.0),
         ),
         actuators={
             "fingers": ImplicitActuatorCfg(
@@ -66,16 +67,16 @@ def get_hand_cfg(prim_name, usd_file_name, pos, rot, joint_pos):
                     "THJ4": 1.45,
                     "THJ(3|2)": 0.99,
                     "THJ1": 0.81,
-                    "elbow_(rotate|bend)": 0.8
+                    "elbow_(rotate|bend)": 40.0
                 },
                 stiffness={
-                    "WRJ.*": 5.0,
+                    "WRJ.*": 8.0,
                     "(FF|MF|RF|LF|TH)J(4|3|2|1)": 5.0,
                     "(LF|TH)J5": 5.0,
                     "elbow_(rotate|bend)": 15.0
                 },
                 damping={
-                    "WRJ.*": 0.5,
+                    "WRJ.*": 1.0,
                     "(FF|MF|RF|LF|TH)J(4|3|2|1)": 1.0,
                     "(LF|TH)J5": 1.0,
                     "elbow_(rotate|bend)": 2.0
@@ -93,13 +94,15 @@ def get_ball_cfg(prim_name, radius, pos):
         init_state=RigidObjectCfg.InitialStateCfg(pos=pos),
         spawn=sim_utils.SphereCfg(
             radius=radius,
-            mass_props=sim_utils.MassPropertiesCfg(mass=0.05),
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(),
+            mass_props=sim_utils.MassPropertiesCfg(mass=0.10), # 100g, stanard lightweight juggling ball
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                enable_ccd=True,
+            ),
             collision_props=sim_utils.CollisionPropertiesCfg(),
             visual_material=sim_utils.materials.PreviewSurfaceCfg(diffuse_color=(0.95, 0.9, 0.6)),
             physics_material=sim_utils.RigidBodyMaterialCfg(
-                static_friction=1.0,   # make it stickier for learning purposes
-                dynamic_friction=1.0,  # make it less slidey for learning purposes
+                static_friction=0.8,
+                dynamic_friction=0.8,
                 restitution=0.0,       # 0.0 = No bounce, like a beanbag
                 friction_combine_mode="max",     # Use the stickiest value of the two touching objects
                 restitution_combine_mode="min",  # Use the least bouncy value of the two touching objects
@@ -120,7 +123,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     num_hands = 2
     action_space = 52
     # observation_space = 4
-    observation_space = action_space * 2 + 3 * num_balls * 2 + 3 * num_hands # 52 joint pos + 52 joint vel + 3*num_balls ball pos + 3*num_balls ball vel + 3*num_hands pos
+    observation_space = action_space * 2 + 3 * num_balls * 2 + 7 * num_hands # 52 joint pos + 52 joint vel + 3*num_balls ball pos + 3*num_balls ball vel + 3*num_hands pos + 4*num_hands quaternion
     state_space = 0
 
     # simulation
@@ -243,6 +246,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     # geometric parameters
     catch_radius = 0.0675  # radius from the hand to the ball which a catch is registered, this definitly needs to be configured before we start TODO
     target_height = 0.95 # height at which the ball apex should be, this also definitly needs to be configured before we start TODO
+    target_delta_height = 0.5 # target_height - hand_height, hand height is approx 0.45m when in rest position
     target_rythem = 0.4 # 60/150 seconds per throw, i.e. 2.5 throws per second
     ground_height = 0.0
     out_of_bounds_radius = 2.0 # radius from the origin in the xy-plane, if a ball gets thrown beyond this, the episode terminates. Implimented to prevent the agent from launching balls and going "hey, no negative rewards were given, so I can just keep throwing them away"
@@ -252,4 +256,4 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     sigma_apex_height = 0.15
     
     min_throw_height = 0.575 # minimum height a ball must reach to be considered a valid throw, done to prevent micro-throws. Set to 0.1 above the hand height
-    min_vertical_velocity = 0.1 # minimum vertical velocity at throw time to be considered a valid throw
+    min_vertical_velocity = 0.05 # minimum vertical velocity at throw time to be considered a valid throw
