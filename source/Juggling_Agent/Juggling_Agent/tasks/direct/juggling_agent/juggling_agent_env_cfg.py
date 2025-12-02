@@ -265,8 +265,8 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     # tolerances
     #sigma_rythem = 0.2
     sigma_rythem = 0.1
-    sigma_drop_distance = 0.2
-    sigma_apex_height = 0.15
+    sigma_drop_distance = 0.1
+    sigma_apex_height = 0.1
     hoarding_time_threshold = 0.1 # time threshold before hoarding penalty starts to be applied
     
     min_throw_height = 0.575 # minimum height a ball must reach to be considered a valid throw, done to prevent micro-throws. Set to 0.1 above the hand height
