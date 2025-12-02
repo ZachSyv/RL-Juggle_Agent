@@ -242,7 +242,7 @@ class JugglingAgentEnv(DirectRLEnv):
 
     def compute_target_hand_position(self, env_ids):
         # throw_hand = self.ball_throw_hand[env_ids, ball_ids]
-        throw_hand = self.ball_throw_hand[env_ids]
+        throw_hand = self.ball_throw_hand[env_ids[0]]
         opposite = 1 - throw_hand # 0 is left hand, 1 is right hand, so 1-throw_hand gives opposite hand index
         return self.hand_pos[env_ids, opposite]
 
@@ -278,7 +278,11 @@ class JugglingAgentEnv(DirectRLEnv):
         # self.ball_pos = torch.stack([ball.data.root_pos_w for ball in self.balls], dim=1)
         # self.ball_vel = torch.stack([ball.data.root_vel_w[:, :3] for ball in self.balls], dim=1)
         self.ball_pos = self.ball1.data.root_pos_w
-        self.ball_vel = self.ball1.data.root_vel_w[:, :3]        
+        self.ball_vel = self.ball1.data.root_vel_w[:, :3]
+
+        self.ball_pos_flat[:] = self.ball_pos
+        self.ball_vel_flat[:] = self.ball_vel
+        self.hand_pos_flat[:] = self.hand_pos
 
         left_quaternion = self.left_hand.data.body_quat_w[:, self.left_wrist_idx]
         right_quaternion = self.right_hand.data.body_quat_w[:, self.right_wrist_idx]
@@ -367,7 +371,8 @@ class JugglingAgentEnv(DirectRLEnv):
         if len(throw_idxs[0]) > 0:
             envs_with_throws_ids = throw_idxs
 
-            prev_holder = self.prev_in_hand[envs_with_throws_ids, ball_ids]
+            #prev_holder = self.prev_in_hand[envs_with_throws_ids, ball_ids]
+            prev_holder = self.prev_in_hand[envs_with_throws_ids]
 
             #self.ball_throw_hand[envs_with_throws_ids, ball_ids] = prev_holder.float().argmax(dim=1)
             self.ball_throw_hand[envs_with_throws_ids] = prev_holder.float().argmax(dim=1)
@@ -464,7 +469,7 @@ class JugglingAgentEnv(DirectRLEnv):
             
             #determin the hand that caught
             # hand_dist = distance_to_hand[env_caught_ids, ball_ids]
-            hand_dist = distance_to_hand[env_caught_ids]
+            hand_dist = distance_to_hand[env_caught_ids[0]]
             closest_hand = hand_dist.argmin(dim=1)
             self.ball_catch_hand[env_caught_ids] = closest_hand
 
@@ -632,7 +637,8 @@ class JugglingAgentEnv(DirectRLEnv):
             # env_ids, ball_ids = catch_idxs
             env_ids = catch_idxs
 
-            peak = self.ball_peak_height[env_ids, ball_ids]
+            # peak = self.ball_peak_height[env_ids, ball_ids]
+            peak = self.ball_peak_height[env_ids]
             # start_height = self.ball_initial_height[env_ids, ball_ids]
             start_height = self.ball_initial_height[env_ids]
             delta_height = torch.clamp(peak - start_height, min=0.0)
