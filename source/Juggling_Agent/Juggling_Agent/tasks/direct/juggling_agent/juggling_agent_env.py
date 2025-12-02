@@ -224,7 +224,7 @@ class JugglingAgentEnv(DirectRLEnv):
         # self.hand_pos_flat = self.hand_pos.view(self.num_envs, -1)
         self.ball_pos_flat = torch.zeros((num_envs, 3), device=device)
         self.ball_vel_flat = torch.zeros((num_envs, 3), device=device)
-        self.hand_pos_flat = torch.zeros((num_envs, 3), device=device)
+        self.hand_pos_flat = torch.zeros((num_envs, 6), device=device)
 
         num_ball_up_rewards = [0.0, 1.0, 0.5, 0.0]  # index 0: 0 balls up, index 1: 1 ball up, index 2: 2 balls up, index 3: 3 balls up
         self.num_ball_up_rewards_lookup = torch.tensor(num_ball_up_rewards, device=device)
@@ -283,7 +283,7 @@ class JugglingAgentEnv(DirectRLEnv):
 
         self.ball_pos_flat[:] = self.ball_pos
         self.ball_vel_flat[:] = self.ball_vel
-        self.hand_pos_flat[:] = self.hand_pos
+        self.hand_pos_flat[:] = self.hand_pos.reshape(self.num_envs, -1)
 
         left_quaternion = self.left_hand.data.body_quat_w[:, self.left_wrist_idx]
         right_quaternion = self.right_hand.data.body_quat_w[:, self.right_wrist_idx]
@@ -370,7 +370,8 @@ class JugglingAgentEnv(DirectRLEnv):
         self.throw_events.copy_(throw_mask)
         throw_idxs = throw_mask.nonzero(as_tuple=True)
         if len(throw_idxs[0]) > 0:
-            envs_with_throws_ids = throw_idxs
+            
+            envs_with_throws_ids = throw_idxs[0]
 
             #prev_holder = self.prev_in_hand[envs_with_throws_ids, ball_ids]
             prev_holder = self.prev_in_hand[envs_with_throws_ids]
@@ -637,7 +638,7 @@ class JugglingAgentEnv(DirectRLEnv):
         if len(catch_idxs[0]) > 0:
 
             # env_ids, ball_ids = catch_idxs
-            env_ids = catch_idxs
+            env_ids = catch_idxs[0]
 
             # peak = self.ball_peak_height[env_ids, ball_ids]
             peak = self.ball_peak_height[env_ids]
@@ -707,7 +708,7 @@ class JugglingAgentEnv(DirectRLEnv):
         throw_idxs = self.throw_events.nonzero(as_tuple=True)
         if len(throw_idxs[0]) > 0:
             # env_ids, ball_id = throw_idxs
-            env_ids = throw_idxs
+            env_ids = throw_idxs[0]
             hands = self.ball_throw_hand[env_ids]
             #hands = self.ball_throw_hand[env_ids, ball_id]
             delta_t = self.hand_throw_intervals[env_ids, hands]

@@ -121,7 +121,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     num_hands = 2
     action_space = 52
     # observation_space = 4
-    observation_space = action_space * 4 + 3 * num_balls * 2 + 7 * num_hands # 52 joint pos + 52 joint vel + 3*num_balls ball pos + 3*num_balls ball vel + 3*num_hands pos + 4*num_hands quaternion
+    observation_space = action_space * 3 + 3 * num_balls * 2 + 7 * num_hands # 52 joint pos + 52 joint vel + 3*num_balls ball pos + 3*num_balls ball vel + 3*num_hands pos + 4*num_hands quaternion
     state_space = 0
 
     # simulation
@@ -134,10 +134,10 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
             enable_ccd=True, 
             
             # Recommended: Boost GPU buffers for the 2048 environments + complex hands
-            gpu_max_rigid_patch_count=10 * 2**18,
-            gpu_max_rigid_contact_count=10 * 2**18,
-            gpu_found_lost_pairs_capacity=10 * 2**18,
-            gpu_found_lost_aggregate_pairs_capacity=10 * 2**18,
+            gpu_max_rigid_patch_count=10 * 2**17,
+            gpu_max_rigid_contact_count=10 * 2**17,
+            gpu_found_lost_pairs_capacity=10 * 2**17,
+            gpu_found_lost_aggregate_pairs_capacity=10 * 2**17,
         )
     )
 
@@ -245,7 +245,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     # pdb.set_trace()
 
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=8192, env_spacing=4.0, replicate_physics=True) # increase num envs to 4096 if you have more GPU memory
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=4.0, replicate_physics=True) # increase num envs to 4096 if you have more GPU memory
 
     # reward weights
     w_hoarding = 1.5        # should be high to strongly discourage hoarding 2 balls in one hand
