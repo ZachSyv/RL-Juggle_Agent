@@ -82,6 +82,7 @@ class JugglingAgentEnv(DirectRLEnv):
         self.actions = torch.zeros((self.num_envs, self.action_dim), device=device)
         self.prev_actions = torch.zeros((self.num_envs, self.action_dim), device=device)
         self.actions_smooth = torch.zeros((self.num_envs, self.action_dim), device=device)
+        self.prev_actions_smooth = torch.zeros((self.num_envs, self.action_dim), device=device)
 
         self.joint_pos = torch.zeros([self.num_envs, self.action_dim], device=device)
         self.joint_vel = torch.zeros([self.num_envs, self.action_dim], device=device)
@@ -209,7 +210,8 @@ class JugglingAgentEnv(DirectRLEnv):
         self.ball_throw_time = torch.zeros((num_envs, self.cfg.num_balls), device=device, dtype=torch.float)
         self.hand_throw_last_time = torch.full((num_envs, self.cfg.num_hands), -1.0, device=device, dtype=torch.float)
         self.hand_throw_intervals = torch.full((num_envs, self.cfg.num_hands), -1.0, device=device, dtype=torch.float)
-        self.hoarding_timer = torch.zeros((num_envs, self.cfg.num_hands), device=device, dtype=torch.float)
+        #self.hoarding_timer = torch.zeros((num_envs, self.cfg.num_hands), device=device, dtype=torch.float)
+        self.holding_duration = torch.zeros((num_envs, self.cfg.num_hands), device=device, dtype=torch.float)
 
     def compute_target_hand_position(self, env_ids, ball_ids):
         throw_hand = self.ball_throw_hand[env_ids, ball_ids]
@@ -292,6 +294,8 @@ class JugglingAgentEnv(DirectRLEnv):
         is_close = distance_to_hand < self.cfg.catch_radius
         is_above = height_diff > -0.02  # Clip off the bottom 1/3 of the sphere
         self.in_hand = is_close & is_above
+        self.holding_duration += self.step_dt * self.in_hand.any(dim=1).float()
+        self.holding_duration *= self.in_hand.any(dim=1).float()  # reset duration if not held
         
         
         ###############
@@ -502,24 +506,24 @@ class JugglingAgentEnv(DirectRLEnv):
         # I belive this works the same as the above nested loop, but takes advantage of tensor broadcasting to make it much faster
         
         # in_hand is already computed in detect_events function
-        balls_in_L = (self.in_hand[:, :, 0]).sum(dim=1)
-        balls_in_R = (self.in_hand[:, :, 1]).sum(dim=1)
+        # balls_in_L = (self.holding_duration[:, :, 0] > self.cfg.hoarding_time_threshold).sum(dim=1)
+        # balls_in_R = (self.holding_duration[:, :, 1] > self.cfg.hoarding_time_threshold).sum(dim=1)
 
-        is_hoarding = (balls_in_L > self.hoarding_threshold) | (balls_in_R > self.hoarding_threshold) # peniltize holding a ball
-        self.hoarding_timer[is_hoarding] += self.step_dt
-        self.hoarding_timer[~is_hoarding] = 0.0
+        # is_hoarding = (balls_in_L > self.hoarding_threshold) | (balls_in_R > self.hoarding_threshold) # peniltize holding a ball
+        # self.hoarding_timer[is_hoarding] += self.step_dt
+        # self.hoarding_timer[~is_hoarding] = 0.0
 
-        hoarding_time = torch.clamp(self.hoarding_timer - self.cfg.hoarding_time_threshold, min=0.0)
-        
-        hoarding_penalty = torch.clamp(self.cfg.w_hoarding * (hoarding_time.square()), max=5.0)
+        hoarding_time = torch.clamp(self.holding_duration - self.cfg.hoarding_time_threshold, min=0.0)
+        hoarding_penalty = self.cfg.w_hoarding * (hoarding_time.square()).sum(dim=1)
+        clamped_penalty = torch.clamp(hoarding_penalty, max=5.0)
 
-        self.reward_buffer -= hoarding_penalty
+        self.reward_buffer -= clamped_penalty
 
         ###################
         # jitter penalty  #
         ###################
 
-        delta_a = self.actions - self.prev_actions
+        delta_a = self.actions_smooth - self.prev_action_smooth
         jitter = torch.sum(delta_a**2, dim=-1)
         self.reward_buffer += -self.cfg.w_jitter * jitter
 
@@ -577,7 +581,7 @@ class JugglingAgentEnv(DirectRLEnv):
         # only added on catch event
         # two parts here, get the max height of the caught ball
         #                 check if the ball is caught by the opposite hand
-
+    
         if self.catch_events.any():
 
             env_ids, ball_ids = self.catch_events.nonzero(as_tuple=True)
@@ -644,6 +648,7 @@ class JugglingAgentEnv(DirectRLEnv):
 
 
         self.prev_actions = self.actions.clone()
+        self.prev_action_smooth = self.actions_smooth.clone()
 
         return self.reward_buffer
 
@@ -762,7 +767,8 @@ class JugglingAgentEnv(DirectRLEnv):
         self.hand_throw_last_time[env_ids] = self.sim.current_time
         self.hand_throw_intervals[env_ids] = 0.0
         self.ball_throw_time[env_ids] = 0.0
-        self.hoarding_timer[env_ids] = 0.0
+        #self.hoarding_timer[env_ids] = 0.0
+        self.holding_duration[env_ids] = 0.0
 
         # self.detect_events()  
         self.prev_in_hand[env_ids] = self.in_hand[env_ids]
