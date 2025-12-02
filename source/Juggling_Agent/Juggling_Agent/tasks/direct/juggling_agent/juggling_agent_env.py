@@ -36,6 +36,14 @@ class JugglingAgentEnv(DirectRLEnv):
         self.left_hand_idx, _ =  self.left_hand.find_joints(".*")
         self.right_hand_idx, _ = self.right_hand.find_joints(".*")
 
+        self.left_arm_joints, _ = self.left_hand.find_joints("elbow_(rotate|bend)|WR.*")
+        self.right_arm_joints, _ = self.right_hand.find_joints("elbow_(rotate|bend)|WR.*")
+
+        # Fingers (all finger joints, controlled by a single grasp value)
+        self.left_finger_joints, _ = self.left_hand.find_joints("(FF|MF|RF|LF|TH)J(4|3|2|1)|(LF|TH)J5")
+        self.right_finger_joints, _ = self.right_hand.find_joints("(FF|MF|RF|LF|TH)J(4|3|2|1)|(LF|TH)J5")
+
+
         # create bias for each obj
         # self.left_hand_bias = 0
         # self.right_hand_bias = len(self.left_hand_idx)
@@ -153,23 +161,39 @@ class JugglingAgentEnv(DirectRLEnv):
         # 1. Hyperparameter: Smoothing Factor (Alpha)
         # 0.0 = Frozen, 1.0 = No Smoothing. 
         alpha = 0.8
+
+        grasp_strength = 1.5  # tune
+        left_finger_effort = left_grasp * grasp_strength
+        right_finger_effort = right_grasp * grasp_strength
+
+        self.left_hand.set_joint_effort_target(
+            left_finger_effort.expand(-1, len(self.left_finger_joints)),
+            joint_ids=self.left_finger_joints
+        )
+        self.right_hand.set_joint_effort_target(
+            right_finger_effort.expand(-1, len(self.right_finger_joints)),
+            joint_ids=self.right_finger_joints
+        )
+
+        # Save for jitter penalty
+        self.prev_actions_smooth = self.actions_smooth.clone()
         
         # 2. Apply Low-Pass Filter
-        current_action = self.actions
-        # if not hasattr(self, 'actions_smooth'):
-        #     self.actions_smooth = torch.zeros_like(current_action)
+        # current_action = self.actions
+        # # if not hasattr(self, 'actions_smooth'):
+        # #     self.actions_smooth = torch.zeros_like(current_action)
             
-        self.actions_smooth = alpha * current_action + (1.0 - alpha) * self.actions_smooth
+        # self.actions_smooth = alpha * current_action + (1.0 - alpha) * self.actions_smooth
 
-        # 3. Slice and Apply the SMOOTH actions
-        num_left = len(self.left_hand_idx)
+        # # 3. Slice and Apply the SMOOTH actions
+        # num_left = len(self.left_hand_idx)
         
-        # Use actions_smooth here instead of self.actions!
-        left_action = self.actions_smooth[:, :num_left] * self.left_limits
-        right_action = self.actions_smooth[:, num_left:] * self.right_limits
+        # # Use actions_smooth here instead of self.actions!
+        # left_action = self.actions_smooth[:, :num_left] * self.left_limits
+        # right_action = self.actions_smooth[:, num_left:] * self.right_limits
 
-        self.left_hand.set_joint_effort_target(left_action, joint_ids=self.left_hand_idx)
-        self.right_hand.set_joint_effort_target(right_action, joint_ids=self.right_hand_idx)
+        # self.left_hand.set_joint_effort_target(left_action, joint_ids=self.left_hand_idx)
+        # self.right_hand.set_joint_effort_target(right_action, joint_ids=self.right_hand_idx)
         # self.left_hand.set_joint_effort_target(
         #     self.actions[:, assign_bias(self.left_hand_bias, self.left_hand_idx)] * 1, joint_ids=self.left_hand_idx)
         # self.right_hand.set_joint_effort_target(
@@ -248,10 +272,16 @@ class JugglingAgentEnv(DirectRLEnv):
         return self.hand_pos[env_ids, opposite]
 
     def _get_observations(self) -> dict:
-        left_pos = self.left_hand.data.joint_pos
-        left_vel = self.left_hand.data.joint_vel
-        right_pos = self.right_hand.data.joint_pos
-        right_vel = self.right_hand.data.joint_vel
+        # left_pos = self.left_hand.data.joint_pos
+        # left_vel = self.left_hand.data.joint_vel
+        # right_pos = self.right_hand.data.joint_pos
+        # right_vel = self.right_hand.data.joint_vel
+        left_pos = self.left_hand.data.joint_pos[:, self.left_arm_joints]
+        left_vel = self.left_hand.data.joint_vel[:, self.left_arm_joints]
+
+        right_pos = self.right_hand.data.joint_pos[:, self.right_arm_joints]
+        right_vel = self.right_hand.data.joint_vel[:, self.right_arm_joints]
+
 
         hand_split = left_pos.shape[1] # split index for left and right hand joints
 
@@ -799,9 +829,19 @@ class JugglingAgentEnv(DirectRLEnv):
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device)
         # Reset hand joints
-        self._apply_init_joint_pose(self.left_hand, self.init_left_joint_pos, env_ids)
-        self._apply_init_joint_pose(self.right_hand, self.init_right_joint_pos, env_ids)       
-
+        # self._apply_init_joint_pose(self.left_hand, self.init_left_joint_pos, env_ids)
+        # self._apply_init_joint_pose(self.right_hand, self.init_right_joint_pos, env_ids)       
+        self._apply_init_joint_pose(self.left_hand, self.init_left_joint_pos[:, self.left_arm_joints], env_ids)
+        self._apply_init_joint_pose(self.right_hand, self.init_right_joint_pos[:, self.right_arm_joints], env_ids)
+        finger_close_torque = 0.5
+        self.left_hand.set_joint_effort_target(
+            torch.full((len(env_ids), len(self.left_finger_joints)), finger_close_torque, device=self.device),
+            joint_ids=self.left_finger_joints
+        )
+        self.right_hand.set_joint_effort_target(
+            torch.full((len(env_ids), len(self.right_finger_joints)), finger_close_torque, device=self.device),
+            joint_ids=self.right_finger_joints
+        )
         # Reset positions of balls
         self._reset_ball_pos(env_ids)
 

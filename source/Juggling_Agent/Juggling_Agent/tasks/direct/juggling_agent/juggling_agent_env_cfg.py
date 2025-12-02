@@ -53,33 +53,55 @@ def get_hand_cfg(prim_name, usd_file_name, pos, rot, joint_pos):
             fixed_tendons_props=sim_utils.FixedTendonPropertiesCfg(limit_stiffness=30.0, damping=1.0),
         ),
         actuators={
-            "fingers": ImplicitActuatorCfg(
-                joint_names_expr=["WR.*", "(FF|MF|RF|LF|TH)J(4|3|2|1)", "(LF|TH)J5", "elbow_(rotate|bend)"],
+            # "fingers": ImplicitActuatorCfg(
+            "wrist_and_elbow": ImplicitActuatorCfg(
+                # joint_names_expr=["WR.*", "(FF|MF|RF|LF|TH)J(4|3|2|1)", "(LF|TH)J5", "elbow_(rotate|bend)"],
+                joint_names_expr=["WR.*", "elbow_(rotate|bend)"],
                 effort_limit_sim={
                     "WRJ2": 4.785,
                     "WRJ1": 2.175,
-                    "(FF|MF|RF|LF)J1": 0.7245,
-                    "FFJ(4|3|2)": 0.9,
-                    "MFJ(4|3|2)": 0.9,
-                    "RFJ(4|3|2)": 0.9,
-                    "LFJ(5|4|3|2)": 0.9,
-                    "THJ5": 2.3722,
-                    "THJ4": 1.45,
-                    "THJ(3|2)": 0.99,
-                    "THJ1": 0.81,
+                    # "(FF|MF|RF|LF)J1": 0.7245,
+                    # "FFJ(4|3|2)": 0.9,
+                    # "MFJ(4|3|2)": 0.9,
+                    # "RFJ(4|3|2)": 0.9,
+                    # "LFJ(5|4|3|2)": 0.9,
+                    # "THJ5": 2.3722,
+                    # "THJ4": 1.45,
+                    # "THJ(3|2)": 0.99,
+                    # "THJ1": 0.81,
                     "elbow_(rotate|bend)": 40.0
                 },
                 stiffness={
                     "WRJ.*": 0.0,
-                    "(FF|MF|RF|LF|TH)J(4|3|2|1)": 0.0,
-                    "(LF|TH)J5": 0.0,
+                    # "(FF|MF|RF|LF|TH)J(4|3|2|1)": 0.0,
+                    # "(LF|TH)J5": 0.0,
                     "elbow_(rotate|bend)": 0.0
                 },
                 damping={
                     "WRJ.*": 0.5,
-                    "(FF|MF|RF|LF|TH)J(4|3|2|1)": 0.05,
-                    "(LF|TH)J5": 0.05,
+                    # "(FF|MF|RF|LF|TH)J(4|3|2|1)": 0.05,
+                    # "(LF|TH)J5": 0.05,
                     "elbow_(rotate|bend)": 2.0
+                },
+            ),
+            "grasp": ImplicitActuatorCfg(
+                joint_names_expr=[
+                    # All finger joints
+                    "(FF|MF|RF|LF|TH)J(4|3|2|1)",
+                    "(LF|TH)J5",
+                ],
+                # A single "grasp" torque applied across all finger joints
+                effort_limit_sim={
+                    "(FF|MF|RF|LF|TH)J(4|3|2|1)": 1.5,
+                    "(LF|TH)J5": 1.5,
+                },
+                stiffness={
+                    "(FF|MF|RF|LF|TH)J(4|3|2|1)": 0.0,
+                    "(LF|TH)J5": 0.0,
+                },
+                damping={
+                    "(FF|MF|RF|LF|TH)J(4|3|2|1)": 0.2,
+                    "(LF|TH)J5": 0.2,
                 },
             ),
         },
@@ -119,7 +141,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     # - spaces definition
     num_balls = 1
     num_hands = 2
-    action_space = 52
+    action_space = 10 #52
     # observation_space = 4
     observation_space = action_space * 3 + 3 * num_balls * 2 + 7 * num_hands # 52 joint pos + 52 joint vel + 3*num_balls ball pos + 3*num_balls ball vel + 3*num_hands pos + 4*num_hands quaternion
     state_space = 0
