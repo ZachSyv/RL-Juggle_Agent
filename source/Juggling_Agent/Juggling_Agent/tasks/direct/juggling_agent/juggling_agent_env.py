@@ -81,7 +81,7 @@ class JugglingAgentEnv(DirectRLEnv):
 
         self.action_dim = self.cfg.action_space
         self.actions = torch.zeros((self.num_envs, self.action_dim), device=device)
-        self.prev_actions = torch.zeros((self.num_envs, self.action_dim), device=device)
+        #self.prev_actions = torch.zeros((self.num_envs, self.action_dim), device=device)
         self.actions_smooth = torch.zeros((self.num_envs, self.action_dim), device=device)
         self.prev_actions_smooth = torch.zeros((self.num_envs, self.action_dim), device=device)
 
@@ -238,11 +238,12 @@ class JugglingAgentEnv(DirectRLEnv):
         self.hand_throw_last_time = torch.full((num_envs, self.cfg.num_hands), -1.0, device=device, dtype=torch.float)
         self.hand_throw_intervals = torch.full((num_envs, self.cfg.num_hands), -1.0, device=device, dtype=torch.float)
         #self.hoarding_timer = torch.zeros((num_envs, self.cfg.num_hands), device=device, dtype=torch.float)
-        self.holding_duration = torch.zeros((num_envs, self.cfg.num_hands), device=device, dtype=torch.float)
+        # self.holding_duration = torch.zeros((num_envs, self.cfg.num_hands), device=device, dtype=torch.float)
+        self.holding_duration = torch.zeros((num_envs, ), device=device, dtype=torch.float)
 
     def compute_target_hand_position(self, env_ids):
         # throw_hand = self.ball_throw_hand[env_ids, ball_ids]
-        throw_hand = self.ball_throw_hand[env_ids[0]]
+        throw_hand = self.ball_throw_hand[env_ids]
         opposite = 1 - throw_hand # 0 is left hand, 1 is right hand, so 1-throw_hand gives opposite hand index
         return self.hand_pos[env_ids, opposite]
 
@@ -293,7 +294,6 @@ class JugglingAgentEnv(DirectRLEnv):
             (
                 self.joint_pos,
                 self.joint_vel,
-                self.prev_actions.detach(),
                 self.actions_smooth.detach(),
                 self.ball_pos_flat,
                 self.ball_vel_flat,
@@ -329,9 +329,10 @@ class JugglingAgentEnv(DirectRLEnv):
         is_close = distance_to_hand < self.cfg.catch_radius
         is_above = height_diff > -0.02  # Clip off the bottom 1/3 of the sphere
         self.in_hand = is_close & is_above
-        in_any_hand = self.in_hand.any(dim=1).float()
-        self.holding_duration += self.step_dt * in_any_hand
-        self.holding_duration *= in_any_hand  # reset duration if not held
+        # in_any_hand = self.in_hand.any(dim=1).float()
+        in_any_hand = self.in_hand.any(dim=1)
+        self.holding_duration[in_any_hand] += self.step_dt
+        self.holding_duration[~in_any_hand] = 0.0  # reset duration if not held
         vel_z = self.ball_vel[..., 2]
         
         ###############
@@ -604,6 +605,7 @@ class JugglingAgentEnv(DirectRLEnv):
         masked_heights[~up_mask] = -1.0 # set to invalid height
         # highest_ball_height, _ = masked_heights.max(dim=1)
         highest_ball_height = masked_heights.max(dim=1).values
+
         
         # potentially change to delta height and delta target height?
 
@@ -670,7 +672,7 @@ class JugglingAgentEnv(DirectRLEnv):
         drop_idxs = self.drop_events.nonzero(as_tuple=True)
         if len(drop_idxs[0]) > 0:
             # env_ids, ball_ids = drop_idxs
-            env_ids = drop_idxs
+            env_ids = drop_idxs[0]
             peak = self.ball_peak_height[env_ids]
             start_height = self.ball_initial_height[env_ids]
             delta_height = torch.clamp(peak - start_height, min=0.0)
@@ -682,7 +684,7 @@ class JugglingAgentEnv(DirectRLEnv):
             Gh = torch.exp((delta_height - self.cfg.target_delta_height).square() * self.sigma_apex_height_coeff)
             # distance gaussian to target hand
             # target_hand_pos = self.compute_target_hand_position(env_ids, ball_ids)
-            target_hand_pos = self.compute_target_hand_position(env_ids)
+            target_hand_pos = self.compute_target_hand_position(env_ids, )
             dist = torch.norm(drop_pos - target_hand_pos, dim=-1)
             Gd = torch.exp((dist).square() * self.sigma_drop_distance_coeff)
 
@@ -714,7 +716,7 @@ class JugglingAgentEnv(DirectRLEnv):
             self.reward_buffer[env_ids] += self.cfg.w_rythem * GT
 
 
-        self.prev_actions = self.actions.clone()
+        #self.prev_actions = self.actions.clone()
         self.prev_actions_smooth = self.actions_smooth.clone()
 
         return self.reward_buffer
@@ -836,12 +838,13 @@ class JugglingAgentEnv(DirectRLEnv):
         self.ball_peak_height[env_ids] = self.ball_pos[env_ids, 2]
         self.ball_initial_height[env_ids] = self.ball_pos[env_ids, 2]
         
-        self.prev_actions[env_ids] = 0.0
+        #self.prev_actions[env_ids] = 0.0
         self.actions[env_ids] = 0.0
 
         # if not hasattr(self, 'actions_smooth'):
         #     self.actions_smooth = torch.zeros_like(self.actions)
         self.actions_smooth[env_ids] = 0.0
+        self.prev_actions_smooth[env_ids] = 0.0
         
         # Reset timers
         # self.throw_last_time[env_ids] = 0.0
