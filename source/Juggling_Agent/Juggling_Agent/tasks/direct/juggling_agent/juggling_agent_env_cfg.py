@@ -134,10 +134,10 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
             enable_ccd=True, 
             
             # Recommended: Boost GPU buffers for the 2048 environments + complex hands
-            gpu_max_rigid_patch_count=10 * 2**16,
-            gpu_max_rigid_contact_count=10 * 2**16,
-            gpu_found_lost_rigid_contact_count=10 * 2**16,
-            gpu_found_lost_aggregate_pair_count=10 * 2**16,
+            gpu_max_rigid_patch_count=10 * 2**18,
+            gpu_max_rigid_contact_count=10 * 2**18,
+            gpu_found_lost_pairs_capacity=10 * 2**18,
+            gpu_found_lost_aggregate_pairs_capacity=10 * 2**18,
         )
     )
 
@@ -245,7 +245,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     # pdb.set_trace()
 
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=4.0, replicate_physics=True) # increase num envs to 4096 if you have more GPU memory
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=8192, env_spacing=4.0, replicate_physics=True) # increase num envs to 4096 if you have more GPU memory
 
     # reward weights
     w_hoarding = 1.5        # should be high to strongly discourage hoarding 2 balls in one hand
