@@ -54,50 +54,71 @@ def get_hand_cfg(prim_name, usd_file_name, pos, rot, joint_pos):
         ),
         actuators={
             # "fingers": ImplicitActuatorCfg(
-            "wrist_and_elbow": ImplicitActuatorCfg(
-                # joint_names_expr=["WR.*", "(FF|MF|RF|LF|TH)J(4|3|2|1)", "(LF|TH)J5", "elbow_(rotate|bend)"],
-                joint_names_expr=["WR.*", "elbow_(rotate|bend)"],
+            # "wrist_and_elbow": ImplicitActuatorCfg(
+            #     # joint_names_expr=["WR.*", "(FF|MF|RF|LF|TH)J(4|3|2|1)", "(LF|TH)J5", "elbow_(rotate|bend)"],
+            #     joint_names_expr=["WR.*", "elbow_(rotate|bend)"],
+            #     effort_limit_sim={
+            #         "WRJ2": 4.785,
+            #         "WRJ1": 2.175,
+            #         # "(FF|MF|RF|LF)J1": 0.7245,
+            #         # "FFJ(4|3|2)": 0.9,
+            #         # "MFJ(4|3|2)": 0.9,
+            #         # "RFJ(4|3|2)": 0.9,
+            #         # "LFJ(5|4|3|2)": 0.9,
+            #         # "THJ5": 2.3722,
+            #         # "THJ4": 1.45,
+            #         # "THJ(3|2)": 0.99,
+            #         # "THJ1": 0.81,
+            #         # "elbow_(rotate|bend)": 40.0
+            #     },
+            #     stiffness={
+            #         "WRJ.*": 6.0, 
+            #         # "(FF|MF|RF|LF|TH)J(4|3|2|1)": 0.0,
+            #         # "(LF|TH)J5": 0.0,
+            #         "elbow_(rotate|bend)": 10.0
+            #     },
+            #     damping={
+            #         "WRJ.*": 0.8,
+            #         # "(FF|MF|RF|LF|TH)J(4|3|2|1)": 0.05,
+            #         # "(LF|TH)J5": 0.05,
+            #         "elbow_(rotate|bend)": 2.0
+            #     },
+            # ),
+            "elbows": ImplicitActuatorCfg(
+                joint_names_expr=["elbow_(rotate|bend)"],
+                effort_limit_sim=40.0, # Elbows are strong
+                stiffness=10.0,
+                damping=2.0,           # Higher damping for stability
+            ),
+            "wrists": ImplicitActuatorCfg(
+                joint_names_expr=["WRJ.*"],
                 effort_limit_sim={
                     "WRJ2": 4.785,
                     "WRJ1": 2.175,
-                    # "(FF|MF|RF|LF)J1": 0.7245,
-                    # "FFJ(4|3|2)": 0.9,
-                    # "MFJ(4|3|2)": 0.9,
-                    # "RFJ(4|3|2)": 0.9,
-                    # "LFJ(5|4|3|2)": 0.9,
-                    # "THJ5": 2.3722,
-                    # "THJ4": 1.45,
-                    # "THJ(3|2)": 0.99,
-                    # "THJ1": 0.81,
-                    "elbow_(rotate|bend)": 40.0
                 },
-                stiffness={
-                    "WRJ.*": 0.0,
-                    # "(FF|MF|RF|LF|TH)J(4|3|2|1)": 0.0,
-                    # "(LF|TH)J5": 0.0,
-                    "elbow_(rotate|bend)": 0.0
-                },
-                damping={
-                    "WRJ.*": 0.5,
-                    # "(FF|MF|RF|LF|TH)J(4|3|2|1)": 0.05,
-                    # "(LF|TH)J5": 0.05,
-                    "elbow_(rotate|bend)": 2.0
-                },
+                stiffness=6.0,
+                damping=0.5,
             ),
-            "grasp": ImplicitActuatorCfg(
+            "fingers": ImplicitActuatorCfg(
                 joint_names_expr=[
                     # All finger joints
-                    "(FF|MF|RF|LF|TH)J(4|3|2|1)",
-                    "(LF|TH)J5",
+                    "(FF|MF|RF|LF|TH)J(5|4|3|2|1)",
                 ],
                 # A single "grasp" torque applied across all finger joints
                 effort_limit_sim={
-                    "(FF|MF|RF|LF|TH)J(4|3|2|1)": 1.5,
-                    "(LF|TH)J5": 1.5,
+                    "(FF|MF|RF|LF)J1": 0.7245,
+                    "FFJ(4|3|2)": 0.9,
+                    "MFJ(4|3|2)": 0.9,
+                    "RFJ(4|3|2)": 0.9,
+                    "LFJ(5|4|3|2)": 0.9,
+                    "THJ5": 2.3722,
+                    "THJ4": 1.45,
+                    "THJ(3|2)": 0.99,
+                    "THJ1": 0.81,
                 },
                 stiffness={
-                    "(FF|MF|RF|LF|TH)J(4|3|2|1)": 0.0,
-                    "(LF|TH)J5": 0.0,
+                    "(FF|MF|RF|LF|TH)J(4|3|2|1)": 4.0,
+                    "(LF|TH)J5": 5.0,
                 },
                 damping={
                     "(FF|MF|RF|LF|TH)J(4|3|2|1)": 0.2,
@@ -138,28 +159,27 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     decimation = 2
     episode_length_s = 7.0
 
-    # - spaces definition
     num_balls = 1
     num_hands = 2
-    action_space = 10 #52
+    action_space = num_hands * 5 # 5 actions per hand, 2 for elbow, 2 for wrist, 1 for open/close fingers
     # observation_space = 4
-    observation_space = action_space * 3 + 3 * num_balls * 2 + 7 * num_hands # 52 joint pos + 52 joint vel + 3*num_balls ball pos + 3*num_balls ball vel + 3*num_hands pos + 4*num_hands quaternion
+    observation_space = 52 * 2 + 10 + 3 * num_balls * 2 + 7 * num_hands # 52 joint pos + 52 joint vel + 3*num_balls ball pos + 3*num_balls ball vel + 3*num_hands pos + 4*num_hands quaternion
     state_space = 0
 
     # simulation
     sim: SimulationCfg = SimulationCfg(
         dt=1 / 100,
         render_interval=decimation,
-        # Recommended: Boost GPU buffers for the 2048 environments + complex hands
+        # Boost GPU buffers for the larger environments
         physx=sim_utils.PhysxCfg(
             # Enable CCD globally for the scene
             enable_ccd=True, 
             
-            # Recommended: Boost GPU buffers for the 2048 environments + complex hands
-            gpu_max_rigid_patch_count=10 * 2**17,
-            gpu_max_rigid_contact_count=10 * 2**17,
-            gpu_found_lost_pairs_capacity=10 * 2**17,
-            gpu_found_lost_aggregate_pairs_capacity=10 * 2**17,
+            # Boost GPU buffers for the larger environments
+            gpu_max_rigid_patch_count=10 * 2**19,
+            gpu_max_rigid_contact_count=10 * 2**19,
+            gpu_found_lost_pairs_capacity=10 * 2**19,
+            gpu_found_lost_aggregate_pairs_capacity=10 * 2**19,
         )
     )
 
@@ -232,14 +252,6 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     ]
     ball_anchor = [0, 0, 1]
     ball_radius = 0.0375
-    # do we need to add ball attributes here?
-
-    # can't use torch in configclass
-    # ball_spawn_offsets = torch.tensor(ball_offset)  # (num_balls, 3)
-    # ball_anchors = torch.tensor(ball_anchor)  # (num_balls, 3)
-    # hand_bases = torch.tensor(hand_pos)  # (2, 3)
-    # anchor_pos = hand_bases[ball_anchors]  # (num_balls, 3)
-    # init_ball_pos = anchor_pos + ball_spawn_offsets
 
     init_ball_pos = []
     for i in range(num_balls):
@@ -267,29 +279,33 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     # pdb.set_trace()
 
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=4.0, replicate_physics=True) # increase num envs to 4096 if you have more GPU memory
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=8192, env_spacing=4.0, replicate_physics=True) # increase num envs to 4096 if you have more GPU memory
 
     # reward weights
     w_hoarding = 1.5        # should be high to strongly discourage hoarding 2 balls in one hand
     w_jitter = 0.05        # should be low to not overly discourage small adjustments, this is to prevent random drifting. Continuously added
-    w_highest = 2.5        # the highest ball, small becaues it's continuously added
-    w_rythem = 1.0         # should be moderate to encourage consistent timing
-    w_catch = 50.0          # should be high to strongly encourage successful catches
-    w_drop = 10.0           # should be moderate, high enough to provide guidance on where the ball should be, but smaller than catch reward
+    w_highest = 3.0        # the highest ball, small becaues it's continuously added
+    w_rythem = 0.0# 1.0 useless with 1 ball        # should be moderate to encourage consistent timing
+    w_catch = 100.0          # should be high to strongly encourage successful catches
+    w_drop = 15.0           # should be moderate, high enough to provide guidance on where the ball should be, but smaller than catch reward
+    w_open = 2.0
+    w_lateral = 10.0
+    w_hands_touching = 10.0 # hands touching is very bad, high penalty
 
     # geometric parameters
-    catch_radius = 0.0675  # radius from the hand to the ball which a catch is registered, this definitly needs to be configured before we start TODO
+    catch_radius = 0.08  # radius from the hand to the ball which a catch is registered, this definitly needs to be configured before we start TODO
     target_height = 0.95 # height at which the ball apex should be, this also definitly needs to be configured before we start TODO
     target_delta_height = 0.5 # target_height - hand_height, hand height is approx 0.45m when in rest position
     target_rythem = 0.4 # 60/150 seconds per throw, i.e. 2.5 throws per second
     ground_height = 0.0
     out_of_bounds_radius = 2.0 # radius from the origin in the xy-plane, if a ball gets thrown beyond this, the episode terminates. Implimented to prevent the agent from launching balls and going "hey, no negative rewards were given, so I can just keep throwing them away"
     # tolerances
-    #sigma_rythem = 0.2
     sigma_rythem = 0.1
-    sigma_drop_distance = 0.1
+    sigma_drop_distance = 0.25
     sigma_apex_height = 0.1
-    hoarding_time_threshold = 0.1 # time threshold before hoarding penalty starts to be applied
     
-    min_throw_height = 0.575 # minimum height a ball must reach to be considered a valid throw, done to prevent micro-throws. Set to 0.1 above the hand height
+    hoarding_time_threshold = 0.1 # time threshold before hoarding penalty starts to be applied
+    hold_time_threshold = 0.07    # time threshold before catch reward starts to be applied
+    hand_personal_space_radius = 0.3 # radius around each hand which the other hand should not enter, to prevent collisions
+    min_throw_height = 0.75 # minimum height a ball must reach to be considered a valid throw, done to prevent micro-throws. Set to 0.1 above the hand height
     min_vertical_velocity = 0.1 # minimum vertical velocity at throw time to be considered a valid throw
