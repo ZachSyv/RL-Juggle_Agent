@@ -39,19 +39,22 @@ from isaaclab_tasks.utils import parse_env_cfg
 import Juggling_Agent.tasks  # noqa: F401
 
 
-def left_throw_motion(t, throw_duration, hold_duration, throw_strength):
-    cycle_time = hold_duration + throw_duration
+def left_throw_motion(t, windup_duration, throw_duration, hold_duration, windup_strength, throw_strength, rotation_strength):
+    cycle_time = hold_duration + windup_duration + throw_duration
     phase = t % cycle_time
 
     if phase < hold_duration:
         # Hold first
-        return 0.0
-    elif phase < hold_duration + throw_duration:
+        return 0.0, 0.0
+    elif phase < hold_duration + windup_duration:
+        # Wind-up phase: slowly lower the hand (positive value)
+        return windup_strength, rotation_strength
+    elif phase < hold_duration + windup_duration + throw_duration:
         # Throw phase: quickly throw up (negative value)
-        return throw_strength
+        return throw_strength, rotation_strength
     else:
         # Back to neutral
-        return 0.0
+        return 0.0, 0.0
 
 
 def generate_hand_actions(t, action_dim, control_mode="zero", throw_params=None):
@@ -74,13 +77,17 @@ def generate_hand_actions(t, action_dim, control_mode="zero", throw_params=None)
         actions = torch.zeros(action_dim)
 
         # Action[1] is left elbow_bend
-        elbow_action = left_throw_motion(
+        elbow_action, rotation_strength = left_throw_motion(
             t,
+            windup_duration=throw_params.get("windup_duration", 0.5),
             throw_duration=throw_params.get("throw_duration", 0.2),
             hold_duration=throw_params.get("hold_duration", 1.0),
+            windup_strength=throw_params.get("windup_strength", 0.5),
             throw_strength=throw_params.get("throw_strength", -0.8),
+            rotation_strength=throw_params.get("rotation_strength", -0.2)
         )
         actions[1] = elbow_action  # elbow_bend
+        actions[0] = rotation_strength   # only during windup/throw
 
         return actions
 
@@ -183,9 +190,12 @@ def main():
 
     # Throw parameters (only used if control_mode is "left_throw")
     throw_params = {
-        "throw_duration": 0.2,    # Duration of throw motion in seconds
-        "throw_strength": -0.8,   # Negative value for elbow_bend to throw up
-        "hold_duration": 1.0,     # Duration to hold before repeating
+        "windup_duration": 0.5,       # Duration to lower hand (wind-up) in seconds
+        "windup_strength": 0.5,       # Positive value to lower hand during wind-up
+        "throw_duration": 0.2,        # Duration of throw motion in seconds
+        "throw_strength": -0.8,       # Negative value for elbow_bend to throw up
+        "hold_duration": 1.0,         # Duration to hold before repeating
+        "rotation_strength": -0.1     # Extra force for action[0] during windup/throw
     }
 
     env = gym.make(args_cli.task, cfg=env_cfg)
