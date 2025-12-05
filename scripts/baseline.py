@@ -39,14 +39,53 @@ from isaaclab_tasks.utils import parse_env_cfg
 import Juggling_Agent.tasks  # noqa: F401
 
 
-def generate_hand_actions(t, action_dim, control_mode="zero"):
+def left_throw_motion(t, throw_duration, hold_duration, throw_strength):
+    cycle_time = hold_duration + throw_duration
+    phase = t % cycle_time
+
+    if phase < hold_duration:
+        # Hold first
+        return 0.0
+    elif phase < hold_duration + throw_duration:
+        # Throw phase: quickly throw up (negative value)
+        return throw_strength
+    else:
+        # Back to neutral
+        return 0.0
+
+
+def generate_hand_actions(t, action_dim, control_mode="zero", throw_params=None):
     """Generate hand actions based on the specified control mode.
+
+    Args:
+        t: Current time in seconds
+        action_dim: Dimension of the action space
+        control_mode: Control mode - "zero" or "left_throw"
+        throw_params: Dictionary with throw parameters
 
     Returns:
         Tensor of actions for all joints
     """
+    if throw_params is None:
+        throw_params = {}
 
-    return torch.zeros(action_dim)
+    if control_mode == "left_throw":
+        # Left hand elbow_bend throw motion, all other joints at 0
+        actions = torch.zeros(action_dim)
+
+        # Action[1] is left elbow_bend
+        elbow_action = left_throw_motion(
+            t,
+            throw_duration=throw_params.get("throw_duration", 0.2),
+            hold_duration=throw_params.get("hold_duration", 1.0),
+            throw_strength=throw_params.get("throw_strength", -0.8),
+        )
+        actions[1] = elbow_action  # elbow_bend
+
+        return actions
+
+    else:
+        return torch.zeros(action_dim)
 
 
 def get_custom_joint_positions():
@@ -139,7 +178,15 @@ def main():
     # Apply custom configurations
     env_cfg = modify_env_config(env_cfg, joint_config=joint_config, ball_config=ball_config)
 
+    # Choose control mode: "zero" or "left_throw"
     control_mode = "left_throw"
+
+    # Throw parameters (only used if control_mode is "left_throw")
+    throw_params = {
+        "throw_duration": 0.2,    # Duration of throw motion in seconds
+        "throw_strength": -0.8,   # Negative value for elbow_bend to throw up
+        "hold_duration": 1.0,     # Duration to hold before repeating
+    }
 
     env = gym.make(args_cli.task, cfg=env_cfg)
 
@@ -159,7 +206,7 @@ def main():
     while simulation_app.is_running():
         # Run everything in inference mode
         with torch.inference_mode():
-            action_sample = generate_hand_actions(t, env.action_space.shape[-1], control_mode)
+            action_sample = generate_hand_actions(t, env.action_space.shape[-1], control_mode, throw_params)
             actions = action_sample.unsqueeze(0).expand(env.action_space.shape[0], -1).to(env.unwrapped.device)
 
             env.step(actions)
