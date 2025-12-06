@@ -125,7 +125,7 @@ def get_custom_joint_positions():
         "LFJ5": math.radians(4.0),
     }
 
-    return joint_pos, joint_pos
+    return joint_pos
 
 
 def get_custom_ball_spawn():
@@ -140,13 +140,13 @@ def modify_env_config(env_cfg, joint_config=None, ball_config=None):
     Modify the environment configuration with custom initial positions.
     """
     if joint_config is not None:
-        left_joint_pos, right_joint_pos = joint_config
+        joint_pos = joint_config
 
         # Update joint positions in the config
-        for joint_name, value in left_joint_pos.items():
+        for joint_name, value in joint_pos.items():
             env_cfg.left_joint_pos[joint_name] = value
 
-        for joint_name, value in right_joint_pos.items():
+        for joint_name, value in joint_pos.items():
             env_cfg.right_joint_pos[joint_name] = value
 
         print(f"[INFO]: Updated custom joint positions")
@@ -191,9 +191,9 @@ def main():
     # Throw parameters (only used if control_mode is "left_throw")
     throw_params = {
         "windup_duration": 0.5,       # Duration to lower hand (wind-up) in seconds
-        "windup_strength": 0.5,       # Positive value to lower hand during wind-up
-        "throw_duration": 0.2,        # Duration of throw motion in seconds
-        "throw_strength": -0.8,       # Negative value for elbow_bend to throw up
+        "windup_strength": 0.165,     # Positive value to lower hand during wind-up
+        "throw_duration": 0.15,       # Duration of throw motion in seconds
+        "throw_strength": -3.5,       # Negative value for elbow_bend to throw up
         "hold_duration": 1.0,         # Duration to hold before repeating
         "rotation_strength": -0.1     # Extra force for action[0] during windup/throw
     }
