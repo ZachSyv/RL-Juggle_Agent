@@ -39,6 +39,18 @@ from isaaclab_tasks.utils import parse_env_cfg
 import Juggling_Agent.tasks  # noqa: F401
 
 
+def get_ball_in_hand_status(env):
+    """
+    Check if ball is currently in left or right hand from the environment.
+    """
+    unwrapped = env.unwrapped
+    # Get in_hand status for first environment (env 0)
+    # in_hand shape: (num_envs, num_hands) where hands are [0=left, 1=right]
+    in_left_hand = unwrapped.in_hand[0, 0].item()  # Boolean
+    in_right_hand = unwrapped.in_hand[0, 1].item()  # Boolean
+    return in_left_hand, in_right_hand
+
+
 def left_throw_motion(t, windup_duration, throw_duration, hold_duration, windup_strength, throw_strength, rotation_strength):
     cycle_time = hold_duration + windup_duration + throw_duration
     phase = t % cycle_time
@@ -212,14 +224,35 @@ def main():
     t = 0.0
     dt = env_cfg.sim.dt * env_cfg.decimation  # Time step in seconds
 
+    # Status display tracking
+    status_interval = 0.1  # Print status every 0.1 seconds
+    last_status_time = 0.0
+
     # Simulate environment
     while simulation_app.is_running():
         # Run everything in inference mode
         with torch.inference_mode():
             action_sample = generate_hand_actions(t, env.action_space.shape[-1], control_mode, throw_params)
+            action_sample[27] = 0.12
             actions = action_sample.unsqueeze(0).expand(env.action_space.shape[0], -1).to(env.unwrapped.device)
 
             env.step(actions)
+
+            # Display ball status periodically
+            if t - last_status_time >= status_interval:
+                last_status_time = t
+
+                # Get ball in hand status
+                in_left, in_right = get_ball_in_hand_status(env)
+
+                # Display status
+                if in_left:
+                    print(f"[t={t:.2f}s] IN LEFT HAND")
+                elif in_right:
+                    print(f"[t={t:.2f}s] IN RIGHT HAND")
+                else:
+                    print(f"[t={t:.2f}s] IN AIR")
+
             t += dt
 
     # Close the simulator
