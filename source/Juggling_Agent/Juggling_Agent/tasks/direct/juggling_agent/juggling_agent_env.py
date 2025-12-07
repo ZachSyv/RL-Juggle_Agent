@@ -481,7 +481,7 @@ class JugglingAgentEnv(DirectRLEnv):
         catch_hand = self.ball_catch_hand
         cross = torch.where(throw_hand != catch_hand, self.cross_pos, self.cross_neg)
         
-        r_catch = self.cfg.w_catch * Gh * cross * valid_catch_mask.float()
+        r_catch = self.cfg.w_catch * (Gh ** 2 )* cross * valid_catch_mask.float()
         self.reward_buffer += r_catch
         # catch_val = self.cfg.w_catch * Gh * cross
         # # Apply mask
