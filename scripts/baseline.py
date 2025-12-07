@@ -51,7 +51,11 @@ def get_ball_in_hand_status(env):
     return in_left_hand, in_right_hand
 
 
-def left_throw_motion(t, windup_duration, throw_duration, hold_duration, windup_strength, throw_strength, rotation_strength):
+def throw_motion(t, windup_duration, throw_duration, hold_duration, windup_strength, throw_strength, rotation_strength):
+    """
+    Generate throwing motion timing for a hand.
+    Returns the action values for elbow_bend and elbow_rotate based on current phase.
+    """
     cycle_time = hold_duration + windup_duration + throw_duration
     phase = t % cycle_time
 
@@ -69,13 +73,13 @@ def left_throw_motion(t, windup_duration, throw_duration, hold_duration, windup_
         return 0.0, 0.0
 
 
-def generate_hand_actions(t, action_dim, control_mode="zero", throw_params=None):
-    """Generate hand actions based on the specified control mode.
+def generate_hand_actions(t, action_dim, throwing_hand="left", throw_params=None):
+    """Generate hand actions for juggling.
 
     Args:
         t: Current time in seconds
         action_dim: Dimension of the action space
-        control_mode: Control mode - "zero" or "left_throw"
+        throwing_hand: "left" or "right" - which hand is currently throwing
         throw_params: Dictionary with throw parameters
 
     Returns:
@@ -84,27 +88,34 @@ def generate_hand_actions(t, action_dim, control_mode="zero", throw_params=None)
     if throw_params is None:
         throw_params = {}
 
-    if control_mode == "left_throw":
-        # Left hand elbow_bend throw motion, all other joints at 0
-        actions = torch.zeros(action_dim)
+    actions = torch.zeros(action_dim)
 
-        # Action[1] is left elbow_bend
-        elbow_action, rotation_strength = left_throw_motion(
-            t,
-            windup_duration=throw_params.get("windup_duration", 0.5),
-            throw_duration=throw_params.get("throw_duration", 0.2),
-            hold_duration=throw_params.get("hold_duration", 1.0),
-            windup_strength=throw_params.get("windup_strength", 0.5),
-            throw_strength=throw_params.get("throw_strength", -0.8),
-            rotation_strength=throw_params.get("rotation_strength", -0.2)
-        )
-        actions[1] = elbow_action  # elbow_bend
-        actions[0] = rotation_strength   # only during windup/throw
+    # Get throw motion values
+    elbow_bend_action, rotation_action = throw_motion(
+        t,
+        windup_duration=throw_params.get("windup_duration", 0.5),
+        throw_duration=throw_params.get("throw_duration", 0.2),
+        hold_duration=throw_params.get("hold_duration", 1.0),
+        windup_strength=throw_params.get("windup_strength", 0.5),
+        throw_strength=throw_params.get("throw_strength", -0.8),
+        rotation_strength=throw_params.get("rotation_strength", -0.2)
+    )
 
-        return actions
+    # Catching hand gets minor adjustment force
+    catch_force = throw_params.get("catch_force", 0.12)
 
-    else:
-        return torch.zeros(action_dim)
+    if throwing_hand == "left":
+        actions[1] = elbow_bend_action   # left elbow_bend
+        actions[0] = rotation_action     # left elbow_rotate
+
+        actions[27] = catch_force        # right elbow_bend - minor downward adjustment
+    else:  # throwing_hand == "right"
+        actions[27] = elbow_bend_action  # right elbow_bend
+        actions[26] = -rotation_action   # right elbow_rotate
+
+        actions[1] = catch_force         # left elbow_bend - minor downward adjustment
+
+    return actions
 
 
 def get_custom_joint_positions():
@@ -200,14 +211,15 @@ def main():
     # Choose control mode: "zero" or "left_throw"
     control_mode = "left_throw"
 
-    # Throw parameters (only used if control_mode is "left_throw")
+    # Throw parameters
     throw_params = {
         "windup_duration": 0.5,       # Duration to lower hand (wind-up) in seconds
         "windup_strength": 0.165,     # Positive value to lower hand during wind-up
         "throw_duration": 0.15,       # Duration of throw motion in seconds
         "throw_strength": -3.5,       # Negative value for elbow_bend to throw up
         "hold_duration": 1.0,         # Duration to hold before repeating
-        "rotation_strength": -0.1     # Extra force for action[0] during windup/throw
+        "rotation_strength": -0.1,    # Extra force for elbow_rotate during windup/throw
+        "catch_force": 0.12           # Minor force on catching hand
     }
 
     env = gym.make(args_cli.task, cfg=env_cfg)
@@ -215,7 +227,7 @@ def main():
     # Print info (this is vectorized environment)
     print(f"[INFO]: Gym observation space: {env.observation_space}")
     print(f"[INFO]: Gym action space: {env.action_space}")
-    print(f"[INFO]: Control mode: {control_mode}")
+    print(f"[INFO]: Starting with LEFT hand throwing, RIGHT hand catching")
 
     # Reset environment
     env.reset()
@@ -223,6 +235,11 @@ def main():
     # Time counter for control patterns
     t = 0.0
     dt = env_cfg.sim.dt * env_cfg.decimation  # Time step in seconds
+
+    # Juggling state tracking
+    throwing_hand = "left"  # Start with left hand throwing
+    prev_in_left = False
+    prev_in_right = False
 
     # Status display tracking
     status_interval = 0.1  # Print status every 0.1 seconds
@@ -232,8 +249,29 @@ def main():
     while simulation_app.is_running():
         # Run everything in inference mode
         with torch.inference_mode():
-            action_sample = generate_hand_actions(t, env.action_space.shape[-1], control_mode, throw_params)
-            action_sample[27] = 0.12
+            # Get ball in hand status
+            in_left, in_right = get_ball_in_hand_status(env)
+
+            # Detect catch and switch throwing hand
+            if throwing_hand == "left":
+                if in_right and not prev_in_right:
+                    # Right hand just caught the ball!
+                    throwing_hand = "right"
+                    t = 0.0  # Reset timer for new throw cycle
+                    print(f"\n>>> CATCH! Switching to RIGHT hand throwing <<<\n")
+            else:  # throwing_hand == "right"
+                if in_left and not prev_in_left:
+                    # Left hand just caught the ball!
+                    throwing_hand = "left"
+                    t = 0.0  # Reset timer for new throw cycle
+                    print(f"\n>>> CATCH! Switching to LEFT hand throwing <<<\n")
+
+            # Update previous status
+            prev_in_left = in_left
+            prev_in_right = in_right
+
+            # Generate actions based on which hand is throwing
+            action_sample = generate_hand_actions(t, env.action_space.shape[-1], throwing_hand, throw_params)
             actions = action_sample.unsqueeze(0).expand(env.action_space.shape[0], -1).to(env.unwrapped.device)
 
             env.step(actions)
@@ -242,16 +280,15 @@ def main():
             if t - last_status_time >= status_interval:
                 last_status_time = t
 
-                # Get ball in hand status
-                in_left, in_right = get_ball_in_hand_status(env)
-
                 # Display status
+                status_str = f"[t={t:.2f}s] Throwing: {throwing_hand.upper():5s} | Ball: "
                 if in_left:
-                    print(f"[t={t:.2f}s] IN LEFT HAND")
+                    status_str += "IN LEFT HAND"
                 elif in_right:
-                    print(f"[t={t:.2f}s] IN RIGHT HAND")
+                    status_str += "IN RIGHT HAND"
                 else:
-                    print(f"[t={t:.2f}s] IN AIR")
+                    status_str += "IN AIR"
+                print(status_str)
 
             t += dt
 
