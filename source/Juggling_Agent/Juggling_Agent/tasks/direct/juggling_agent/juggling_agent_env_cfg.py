@@ -305,7 +305,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     # tolerances
     sigma_rythem = 0.1
     sigma_drop_distance = 0.25
-    sigma_apex_height = 0.1
+    sigma_apex_height = 0.25
     #sigma_finger_flexation = 10.0
 
     hoarding_time_threshold = 0.1 # time threshold before hoarding penalty starts to be applied
