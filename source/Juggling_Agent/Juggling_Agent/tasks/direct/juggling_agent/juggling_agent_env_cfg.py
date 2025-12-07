@@ -281,16 +281,23 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=8192, env_spacing=4.0, replicate_physics=True) # increase num envs to 4096 if you have more GPU memory
 
-    # reward weights
-    w_hoarding = 0.5        # should be high to strongly discourage hoarding 2 balls in one hand
-    w_jitter = 0.005        # should be low to not overly discourage small adjustments, this is to prevent random drifting. Continuously added
-    w_highest = 0.1        # the highest ball, small becaues it's continuously added
+    # ----------- reward weights ---------------
+
+    # penalties
+    w_hoarding = 1.0        # should be high to strongly discourage hoarding 2 balls in one hand
+    w_jitter = 0.01        # should be low to not overly discourage small adjustments, this is to prevent random drifting. Continuously added
+    w_hands_touching = 1.0 # hands touching is very bad, high penalty
+
+    # continous rewards
+    w_highest = 1.0        # the highest ball, small becaues it's continuously added
     w_rythem = 0.0# 1.0 useless with 1 ball        # should be moderate to encourage consistent timing
-    w_catch = 10.0          # should be high to strongly encourage successful catches
-    w_drop = 1.0           # should be moderate, high enough to provide guidance on where the ball should be, but smaller than catch reward
-    w_hand_up = 0.02
-    w_lateral = 1.0
-    w_hands_touching = -1.0 # hands touching is very bad, high penalty
+    w_hand_up = 0.2
+    
+    # discrete rewards
+    w_catch = 30.0          # should be high to strongly encourage successful catches
+    w_drop = 5.0           # should be moderate, high enough to provide guidance on where the ball should be, but smaller than catch reward
+    w_lateral = 0.5
+    
 
     # geometric parameters
     catch_radius = 0.085  # radius from the hand to the ball which a catch is registered, this definitly needs to be configured before we start TODO

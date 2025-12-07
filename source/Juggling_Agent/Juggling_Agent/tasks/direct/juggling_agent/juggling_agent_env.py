@@ -497,7 +497,7 @@ class JugglingAgentEnv(DirectRLEnv):
         direction_target = torch.where(throw_hand == 0, 1.0, -1.0) # Left hand throws to +Y, Right hand to -Y
         vel_y = self.ball_vel[:, 1]
         # Reward only on throw event. Clamp so we don't punish "wrong" direction (just 0 reward).
-        r_lateral = self.cfg.w_lateral * (vel_y * direction_target).clamp(min=0.0) * self.throw_events.float()
+        r_lateral = self.cfg.w_lateral * (vel_y * direction_target).clamp(min=0.0, max=2.0) * self.throw_events.float()
         self.reward_buffer += r_lateral
 
         ############
