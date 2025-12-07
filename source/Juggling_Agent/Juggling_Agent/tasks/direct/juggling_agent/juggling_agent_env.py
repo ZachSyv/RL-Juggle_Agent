@@ -13,7 +13,7 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation, RigidObject, RigidObjectCfg
 from isaaclab.envs import DirectRLEnv
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
-from isaaclab.utils.math import sample_uniform
+from isaaclab.utils.math import sample_uniform, quat_apply
 
 from .juggling_agent_env_cfg import JugglingAgentEnvCfg
 
@@ -240,8 +240,8 @@ class JugglingAgentEnv(DirectRLEnv):
         self.ball_vel_flat[:] = self.ball_vel
         self.hand_pos_flat[:] = self.hand_pos.reshape(self.num_envs, -1)
 
-        left_quaternion = self.left_hand.data.body_quat_w[:, self.left_wrist_idx]
-        right_quaternion = self.right_hand.data.body_quat_w[:, self.right_wrist_idx]
+        self.left_quaternion = self.left_hand.data.body_quat_w[:, self.left_wrist_idx]
+        self.right_quaternion = self.right_hand.data.body_quat_w[:, self.right_wrist_idx]
 
         self.detect_events()
         
@@ -253,8 +253,8 @@ class JugglingAgentEnv(DirectRLEnv):
                 self.ball_pos_flat,
                 self.ball_vel_flat,
                 self.hand_pos_flat,
-                left_quaternion,
-                right_quaternion,
+                self.left_quaternion,
+                self.right_quaternion,
             ),
             dim=1,
         )
@@ -318,16 +318,16 @@ class JugglingAgentEnv(DirectRLEnv):
         ################
         # Detect Catches
         ################
-        caught = self.in_hand.any(dim=1)
-        stable_catch = (self.holding_duration >= self.cfg.hold_time_threshold) & (self.holding_duration < (self.cfg.hold_time_threshold + self.step_dt + 1e-6))
-        was_thrown = (self.ball_throw_time > 0.0)
-        descending = vel_ball_z < self.cfg.min_vertical_velocity
+        # caught = self.in_hand.any(dim=1)
+        # stable_catch = (self.holding_duration >= self.cfg.hold_time_threshold) & (self.holding_duration < (self.cfg.hold_time_threshold + self.step_dt + 1e-6))
+        # was_thrown = (self.ball_throw_time > 0.0)
+        # descending = vel_ball_z < self.cfg.min_vertical_velocity
         
-        valid_catch_mask = stable_catch & caught & descending & was_thrown
-        self.catch_events.copy_(valid_catch_mask)
+        # valid_catch_mask = stable_catch & caught & descending & was_thrown
+        # self.catch_events.copy_(valid_catch_mask)
         
         closest_hand = distance_to_hand.argmin(dim=1)
-        self.ball_catch_hand = torch.where(valid_catch_mask, closest_hand, self.ball_catch_hand)
+        self.ball_catch_hand = torch.where(in_any_hand, closest_hand, self.ball_catch_hand)
 
         ################
         # Detect Drops
@@ -348,7 +348,11 @@ class JugglingAgentEnv(DirectRLEnv):
         self.reward_buffer.fill_(0.0)
 
         # initialize some commonly used variables
+        throw_hand_idx = self.ball_throw_hand.clamp(min=0, max=1)
+        target_hand_idx = 1 - throw_hand_idx
         target_hand_pos = self._get_target_hand_pos()
+        dist_to_target = torch.norm(self.ball_pos - target_hand_pos, dim=-1)
+        is_approaching = (self.ball_vel[:, 2] < -0.1) & (dist_to_target < 0.4) & (~self.in_hand.any(dim=1))
 
         # --- Continuous Penalties ---
         
@@ -381,7 +385,8 @@ class JugglingAgentEnv(DirectRLEnv):
         
         is_hand_touching = (hand_separation < self.cfg.min_hand_dist)
         r_hand_touching = -self.cfg.w_hands_touching * is_hand_touching.float()
-        
+        valid_stance = (~is_hand_touching).float()
+
         self.reward_buffer += r_hand_touching
 
         # --- Continuous Rewards ---
@@ -432,19 +437,26 @@ class JugglingAgentEnv(DirectRLEnv):
         # Open Hand #
         #############
         ''' Reward for opening the target hand when the ball is falling, to facilitate successful catches '''
-        throw_hand_idx = self.ball_throw_hand.clamp(min=0, max=1)
-        target_hand_idx = 1 - throw_hand_idx
         # Actions are (N, 10). Left Fingers is index 4, Right Fingers is index 9.
         # We can gather them efficiently.
         # Create indices: Left=4, Right=9
-        action_indices = torch.where(target_hand_idx == 0, 4, 9).unsqueeze(1)
-        target_finger_action = torch.gather(self.actions_smooth, 1, action_indices).squeeze(1)
-        dist_to_target = torch.norm(self.ball_pos - target_hand_pos, dim=-1)
-        is_approaching = (self.ball_vel[:, 2] < -0.1) & (dist_to_target < 0.4) & (~self.in_hand.any(dim=1))
-        # We want Action to be -1.0 (Open). 
-        # Formula: (1.0 - action) / 2.0  ->  If -1.0, gives 1.0. If 1.0, gives 0.0.
-        open_bonus = (1.0 - target_finger_action) * 0.5
-        r_open = self.cfg.w_open * open_bonus * is_approaching.float()
+        #action_indices = torch.where(target_hand_idx == 0, 4, 9).unsqueeze(1)
+        #Get Orientation (Palm Up)
+        # We need the quaternion of the TARGET hand
+        # left_quaternion / right_quaternion are (N, 4)
+        target_quat = torch.where(target_hand_idx.unsqueeze(1) == 0, self.left_quaternion, self.right_quaternion)
+        #target_finger_action = torch.gather(self.actions_smooth, 1, action_indices).squeeze(1)
+        palm_normal_local = torch.tensor([0.0, -1.0, 0.0], device=self.device).expand(self.num_envs, -1)
+        palm_normal_world = quat_apply(target_quat, palm_normal_local)
+        palm_up_score = palm_normal_world[:, 2]
+
+        z_threshold = 0.5 # palm mostly up
+        valid_orientation_factor = torch.clamp((palm_up_score - z_threshold) * 5.0, min=0.0, max=1.0)
+        
+        # gaussian based on ideal finger flexation
+        # error_sq = (target_finger_action - self.cfg.target_finger_flexation).square()
+        # open_bonus = torch.exp(-error_sq * self.cfg.sigma_finger_flexation)
+        r_open = self.cfg.w_hand_up * is_approaching.float() * valid_orientation_factor * valid_stance
         self.reward_buffer += r_open
 
 
@@ -453,7 +465,13 @@ class JugglingAgentEnv(DirectRLEnv):
         ##########
         #  Catch #
         ##########
-        ''' Reward for successfully catching the ball. Multiplies the height of the throw with a large cross-hand bonus. Negative reward if caught with the same hand. '''
+        ''' Reward for successfully catching the ball. Multiplies the height of the throw with a large cross-hand bonus. Negative reward if caught with the same hand. '''       
+        is_holding = self.in_hand.any(dim=1)
+        was_thrown = (self.ball_throw_time > 0.0)
+        in_payout_window = (self.holding_duration < self.cfg.hold_time_threshold)
+        valid_catch_mask = is_holding & was_thrown & in_payout_window
+
+        # calculate Gh
         peak = self.ball_peak_height
         start_height = self.ball_initial_height
         delta_height = torch.clamp(peak - start_height, min=0.0)
@@ -463,18 +481,20 @@ class JugglingAgentEnv(DirectRLEnv):
         catch_hand = self.ball_catch_hand
         cross = torch.where(throw_hand != catch_hand, self.cross_pos, self.cross_neg)
         
-        catch_val = self.cfg.w_catch * Gh * cross
-        # Apply mask
-        r_catch = catch_val * self.catch_events.float()
+        r_catch = self.cfg.w_catch * Gh * cross * valid_catch_mask.float()
         self.reward_buffer += r_catch
+        # catch_val = self.cfg.w_catch * Gh * cross
+        # # Apply mask
+        # r_catch = catch_val * self.catch_events.float()
+        # self.reward_buffer += r_catch
         
-        self.ball_peak_height = torch.where(self.catch_events, 0.0, self.ball_peak_height)
+        # self.ball_peak_height = torch.where(self.catch_events, 0.0, self.ball_peak_height)
 
         ##################
         # Lateral Throws #
         ##################
         ''' Reward for throwing the ball laterally towards the opposite hand, encouraging throws on the correct axis '''
-        direction_target = torch.where(throw_hand == 0, 1.0, -1.0)
+        direction_target = torch.where(throw_hand == 0, 1.0, -1.0) # Left hand throws to +Y, Right hand to -Y
         vel_y = self.ball_vel[:, 1]
         # Reward only on throw event. Clamp so we don't punish "wrong" direction (just 0 reward).
         r_lateral = self.cfg.w_lateral * (vel_y * direction_target).clamp(min=0.0) * self.throw_events.float()
