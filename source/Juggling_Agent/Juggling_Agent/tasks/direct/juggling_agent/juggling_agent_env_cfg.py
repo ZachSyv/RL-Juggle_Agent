@@ -156,7 +156,7 @@ def get_ball_cfg(prim_name, radius, pos):
 @configclass
 class JugglingAgentEnvCfg(DirectRLEnvCfg):
     # env
-    decimation = 2
+    decimation = 1
     episode_length_s = 7.0
 
     num_balls = 1
@@ -286,26 +286,30 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     w_jitter = 0.05        # should be low to not overly discourage small adjustments, this is to prevent random drifting. Continuously added
     w_highest = 5.0        # the highest ball, small becaues it's continuously added
     w_rythem = 0.0# 1.0 useless with 1 ball        # should be moderate to encourage consistent timing
-    w_catch = 100.0          # should be high to strongly encourage successful catches
-    w_drop = 15.0           # should be moderate, high enough to provide guidance on where the ball should be, but smaller than catch reward
-    w_open = 2.0
+    w_catch = 200.0          # should be high to strongly encourage successful catches
+    w_drop = 25.0           # should be moderate, high enough to provide guidance on where the ball should be, but smaller than catch reward
+    w_hand_up = 0.5
     w_lateral = 10.0
-    w_hands_touching = 10.0 # hands touching is very bad, high penalty
+    w_hands_touching = 50.0 # hands touching is very bad, high penalty
 
     # geometric parameters
-    catch_radius = 0.08  # radius from the hand to the ball which a catch is registered, this definitly needs to be configured before we start TODO
+    catch_radius = 0.085  # radius from the hand to the ball which a catch is registered, this definitly needs to be configured before we start TODO
     target_height = 0.95 # height at which the ball apex should be, this also definitly needs to be configured before we start TODO
     target_delta_height = 0.5 # target_height - hand_height, hand height is approx 0.45m when in rest position
     target_rythem = 0.4 # 60/150 seconds per throw, i.e. 2.5 throws per second
     ground_height = 0.0
     out_of_bounds_radius = 2.0 # radius from the origin in the xy-plane, if a ball gets thrown beyond this, the episode terminates. Implimented to prevent the agent from launching balls and going "hey, no negative rewards were given, so I can just keep throwing them away"
+    #target_finger_flexation = -0.4
+    
+    
     # tolerances
     sigma_rythem = 0.1
     sigma_drop_distance = 0.25
     sigma_apex_height = 0.1
+    #sigma_finger_flexation = 10.0
 
     hoarding_time_threshold = 0.1 # time threshold before hoarding penalty starts to be applied
-    hold_time_threshold = 0.07    # time threshold before catch reward starts to be applied
-    min_hand_dist = 0.4 # radius around each hand which the other hand should not enter, to prevent collisions
+    hold_time_threshold = 0.1    # time threshold before catch reward starts to be applied
+    min_hand_dist = 0.5 # radius around each hand which the other hand should not enter, to prevent collisions
     min_throw_height = 0.85 # minimum height a ball must reach to be considered a valid throw, done to prevent micro-throws. Set to just out of reach of the hand at max rotation
     min_vertical_velocity = 0.1 # minimum vertical velocity at throw time to be considered a valid throw
