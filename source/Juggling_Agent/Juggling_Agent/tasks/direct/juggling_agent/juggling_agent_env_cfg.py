@@ -290,7 +290,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     w_drop = 1.0           # should be moderate, high enough to provide guidance on where the ball should be, but smaller than catch reward
     w_hand_up = 0.02
     w_lateral = 1.0
-    w_hands_touching = -1.0 # hands touching is very bad, high penalty
+    w_hands_touching = 1.0 # hands touching is very bad, high penalty
 
     # geometric parameters
     catch_radius = 0.085  # radius from the hand to the ball which a catch is registered, this definitly needs to be configured before we start TODO
@@ -311,5 +311,5 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     hoarding_time_threshold = 1.0 # time threshold before hoarding penalty starts to be applied
     hold_time_threshold = 0.1    # time threshold before catch reward starts to be applied
     min_hand_dist = 0.5 # radius around each hand which the other hand should not enter, to prevent collisions
-    min_throw_height = 0.85 # minimum height a ball must reach to be considered a valid throw, done to prevent micro-throws. Set to just out of reach of the hand at max rotation
+    min_throw_height = 0.825 # minimum height a ball must reach to be considered a valid throw, done to prevent micro-throws. Set to just out of reach of the hand at max rotation
     min_vertical_velocity = 0.1 # minimum vertical velocity at throw time to be considered a valid throw
