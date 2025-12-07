@@ -191,6 +191,8 @@ def modify_env_config(env_cfg, joint_config=None, ball_config=None):
 
         print(f"[INFO]: Updated custom ball spawn location: {env_cfg.init_ball_pos[0]}")
 
+    env_cfg.episode_length_s = 30.0
+
     return env_cfg
 
 
@@ -242,8 +244,8 @@ def main():
     prev_in_right = False
 
     # Status display tracking
-    status_interval = 0.1  # Print status every 0.1 seconds
-    last_status_time = 0.0
+    # status_interval = 0.1  # Print status every 0.1 seconds
+    # last_status_time = 0.0
 
     # Simulate environment
     while simulation_app.is_running():
@@ -277,18 +279,18 @@ def main():
             env.step(actions)
 
             # Display ball status periodically
-            if t - last_status_time >= status_interval:
-                last_status_time = t
-
-                # Display status
-                status_str = f"[t={t:.2f}s] Throwing: {throwing_hand.upper():5s} | Ball: "
-                if in_left:
-                    status_str += "IN LEFT HAND"
-                elif in_right:
-                    status_str += "IN RIGHT HAND"
-                else:
-                    status_str += "IN AIR"
-                print(status_str)
+            # if t - last_status_time >= status_interval:
+            #     last_status_time = t
+            #
+            #     # Display status
+            #     status_str = f"[t={t:.2f}s] Throwing: {throwing_hand.upper():5s} | Ball: "
+            #     if in_left:
+            #         status_str += "IN LEFT HAND"
+            #     elif in_right:
+            #         status_str += "IN RIGHT HAND"
+            #     else:
+            #         status_str += "IN AIR"
+            #     print(status_str)
 
             t += dt
 
