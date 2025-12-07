@@ -362,7 +362,7 @@ class JugglingAgentEnv(DirectRLEnv):
         ''' Penalty for holding onto the ball that needs to be thrown for too long '''
 
         hoarding_time = torch.clamp(self.holding_duration - self.cfg.hoarding_time_threshold, min=0.0)
-        r_hoard = -torch.clamp(self.cfg.w_hoarding * (hoarding_time.square()), max=5.0)
+        r_hoard = -torch.clamp(self.cfg.w_hoarding * (hoarding_time.square()), max=50.0)
         self.reward_buffer += r_hoard
 
         ################
