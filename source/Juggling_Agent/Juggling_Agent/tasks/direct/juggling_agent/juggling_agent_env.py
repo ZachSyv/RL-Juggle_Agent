@@ -159,7 +159,7 @@ class JugglingAgentEnv(DirectRLEnv):
         self.left_hand.set_joint_position_target(target_left, joint_ids=self.left_hand_idx)
         self.right_hand.set_joint_position_target(target_right, joint_ids=self.right_hand_idx)
 
-        self.prev_actions_smooth = self.actions_smooth.clone()
+        #self.prev_actions_smooth = self.actions_smooth.clone()
 
     def _allocate_tensors(self):
         num_envs = self.num_envs
@@ -534,7 +534,7 @@ class JugglingAgentEnv(DirectRLEnv):
         # Mean tells us "Average reward per step per agent"
         self.extras["logs/rewards_catch"] = r_catch.mean()
         self.extras["logs/rewards_drop"] = r_drop.mean()
-        self.extras["logs/rewards_rhythm"] = r_rhythm.mean()
+        #self.extras["logs/rewards_rhythm"] = r_rhythm.mean()
         self.extras["logs/rewards_lateral"] = r_lateral.mean()
         
         # Log event counts
