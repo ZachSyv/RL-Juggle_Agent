@@ -310,6 +310,6 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
 
     hoarding_time_threshold = 0.1 # time threshold before hoarding penalty starts to be applied
     hold_time_threshold = 1.0    # time threshold before catch reward starts to be applied
-    min_hand_dist = 0.4 # radius around each hand which the other hand should not enter, to prevent collisions
+    min_hand_dist = 0.5 # radius around each hand which the other hand should not enter, to prevent collisions
     min_throw_height = 0.85 # minimum height a ball must reach to be considered a valid throw, done to prevent micro-throws. Set to just out of reach of the hand at max rotation
     min_vertical_velocity = 0.1 # minimum vertical velocity at throw time to be considered a valid throw
