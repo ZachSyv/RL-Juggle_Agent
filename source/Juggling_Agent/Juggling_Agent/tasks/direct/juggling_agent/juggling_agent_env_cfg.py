@@ -5,25 +5,19 @@
 import os
 import math
 from pathlib import Path
-#import torch can't use torch in configclass
-
-from isaaclab_assets.robots.cartpole import CARTPOLE_CFG
 
 from isaaclab.assets import ArticulationCfg, RigidObjectCfg
 from isaaclab.envs import DirectRLEnvCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import SimulationCfg
 from isaaclab.utils import configclass
+from isaaclab.sensors import ContactSensorCfg
+from isaaclab.actuators import ImplicitActuatorCfg
 
-# make isaaclab happy
 import isaaclab.sim as sim_utils
 
 # set this path in the Path-to-IsaacLab/source/isaaclab/isaaclab/utils/assets.py
 # from isaaclab.utils.assets import CUSTOM_ASSET_DIR
-from isaaclab.actuators import ImplicitActuatorCfg
-
-import pdb
-
 CUSTOM_ASSET_DIR = str((Path(__file__).parent.parent.parent.parent / "assets").resolve())
 
 def get_hand_cfg(prim_name, usd_file_name, pos, rot, joint_pos):
@@ -36,6 +30,7 @@ def get_hand_cfg(prim_name, usd_file_name, pos, rot, joint_pos):
         ),
         spawn=sim_utils.UsdFileCfg(
             usd_path=os.path.join(CUSTOM_ASSET_DIR, usd_file_name),
+            activate_contact_sensors=True,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 disable_gravity=True,
                 retain_accelerations=True,
@@ -44,7 +39,7 @@ def get_hand_cfg(prim_name, usd_file_name, pos, rot, joint_pos):
             articulation_props=sim_utils.ArticulationRootPropertiesCfg(
                 enabled_self_collisions=True,
                 solver_position_iteration_count=12,
-                solver_velocity_iteration_count=1,
+                solver_velocity_iteration_count=4,
                 sleep_threshold=0.005,
                 stabilization_threshold=0.0005,
                 fix_root_link=True,
@@ -162,7 +157,6 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     num_balls = 1
     num_hands = 2
     action_space = num_hands * 5 # 5 actions per hand, 2 for elbow, 2 for wrist, 1 for open/close fingers
-    # observation_space = 4
     observation_space = 52 * 2 + 10 + 3 * num_balls * 2 + 7 * num_hands # 52 joint pos + 52 joint vel + 3*num_balls ball pos + 3*num_balls ball vel + 3*num_hands pos + 4*num_hands quaternion
     state_space = 0
 
@@ -170,11 +164,9 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     sim: SimulationCfg = SimulationCfg(
         dt=1 / 100,
         render_interval=decimation,
-        # Boost GPU buffers for the larger environments
         physx=sim_utils.PhysxCfg(
             # Enable CCD globally for the scene
             enable_ccd=True, 
-            
             # Boost GPU buffers for the larger environments
             gpu_max_rigid_patch_count=10 * 2**19,
             gpu_max_rigid_contact_count=10 * 2**19,
@@ -263,8 +255,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
         ]
         init_ball_pos.append(pos)
 
-    # robot(s)
-    # hand_cfg: ArticulationCfg = CARTPOLE_CFG.replace(prim_path="/World/envs/env_.*/Hand")
+    # asset configs
     left_hand_cfg = get_hand_cfg("left_hand", "shadow_hand_left_with_elbow.usd",
                                  pos=hand_pos[0], rot=[-math.sqrt(2) / 2, 0, math.sqrt(2) / 2, 0],
                                  joint_pos=left_joint_pos)
@@ -278,38 +269,306 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
 
     # pdb.set_trace()
 
-    # scene
+    # sensors
+    contact_sensor_left_palm: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/left_hand/palm",
+        history_length=1,
+        track_air_time=False,
+        # Only report contact if the other object is a ball
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"], 
+        debug_vis=False,
+    )
+    contact_sensor_left_metacarpal: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/left_hand/.*metacarpal", #
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_left_thumb_proximal: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/left_hand/thproximal",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_left_thumb_middle: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/left_hand/thmiddle",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_left_thumb_distal: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/left_hand/thdistal",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_left_index_proximal: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/left_hand/ffproximal",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_left_index_middle: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/left_hand/ffmiddle",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_left_index_distal: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/left_hand/ffdistal",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_left_middle_proximal: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/left_hand/mfproximal",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_left_middle_middle: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/left_hand/mfmiddle",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_left_middle_distal: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/left_hand/mfdistal",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_left_ring_proximal: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/left_hand/rfproximal",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_left_ring_middle: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/left_hand/rfmiddle",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_left_ring_distal: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/left_hand/rfdistal",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_left_pinky_proximal: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/left_hand/lfproximal",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_left_pinky_middle: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/left_hand/lfmiddle",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_left_pinky_distal: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/left_hand/lfdistal",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+
+
+    contact_sensor_right_palm: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/right_hand/palm",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_right_metacarpal: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/right_hand/.*metacarpal",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_right_thumb_proximal: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/right_hand/thproximal",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_right_thumb_middle: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/right_hand/thmiddle",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_right_thumb_distal: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/right_hand/thdistal",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_right_index_proximal: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/right_hand/ffproximal",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_right_index_middle: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/right_hand/ffmiddle",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_right_index_distal: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/right_hand/ffdistal",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_right_middle_proximal: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/right_hand/mfproximal",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_right_middle_middle: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/right_hand/mfmiddle",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_right_middle_distal: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/right_hand/mfdistal",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_right_ring_proximal: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/right_hand/rfproximal",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_right_ring_middle: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/right_hand/rfmiddle",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_right_ring_distal: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/right_hand/rfdistal",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_right_pinky_proximal: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/right_hand/lfproximal",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_right_pinky_middle: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/right_hand/lfmiddle",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_right_pinky_distal: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/right_hand/lfdistal",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=8192, env_spacing=4.0, replicate_physics=True) # increase num envs to 4096 if you have more GPU memory
 
     # reward weights
-    w_hoarding = 0.5        # should be high to strongly discourage hoarding 2 balls in one hand
-    w_jitter = 0.005        # should be low to not overly discourage small adjustments, this is to prevent random drifting. Continuously added
-    w_highest = 0.1        # the highest ball, small becaues it's continuously added
+    # Continuous Penalties
+    w_hoarding = 100.0        # should be high to strongly discourage hoarding 2 balls in one hand
+    w_jitter = 0.01        # should be low to not overly discourage small adjustments, this is to prevent random drifting. Continuously added
+    w_hands_touching = 20.0 # hands touching is very bad, high penalty
+
+    # Discrete Penalties
+    w_drop = 10.0           # moderate penalty that lowers depending on how far from the hand the ball is dropped
+    w_drift = 25.0         # penatly for throwing forwards/backwards. Strong to encourage throws on the y-axis
+
+    # Continuous Rewards
+    w_catch_prediction = 0.5
+
+    # Discrete Rewards
+    w_delta_throw = 75.0     # reward for throwing the ball up, larger sigma to allow for early learning, and since the real goal is apex height
+    w_accuracy = 25.0       # reward for throwing the ball to where the target hand will be at catch time
+    w_apex_height = 100.0    # should be high to encourage throwing the ball up to the target height. The trick to consistent juggling is getting a consistent apex height
+    w_throw_power = 5.0
     w_rythem = 0.0# 1.0 useless with 1 ball        # should be moderate to encourage consistent timing
-    w_catch = 10.0          # should be high to strongly encourage successful catches
-    w_drop = 1.0           # should be moderate, high enough to provide guidance on where the ball should be, but smaller than catch reward
-    w_hand_up = 0.02
-    w_lateral = 1.0
-    w_hands_touching = 1.0 # hands touching is very bad, high penalty
+    w_catch = 250.0          # main goal, paid out over the next catch_payout_time steps. should be high to strongly encourage successful catches
+    
+
 
     # geometric parameters
-    catch_radius = 0.085  # radius from the hand to the ball which a catch is registered, this definitly needs to be configured before we start TODO
-    target_height = 0.95 # height at which the ball apex should be, this also definitly needs to be configured before we start TODO
+    target_height = 1.0#0.95 # height at which the ball apex should be
     target_delta_height = 0.5 # target_height - hand_height, hand height is approx 0.45m when in rest position
     target_rythem = 0.4 # 60/150 seconds per throw, i.e. 2.5 throws per second
     ground_height = 0.0
     out_of_bounds_radius = 2.0 # radius from the origin in the xy-plane, if a ball gets thrown beyond this, the episode terminates. Implimented to prevent the agent from launching balls and going "hey, no negative rewards were given, so I can just keep throwing them away"
-    #target_finger_flexation = -0.4
-    
-    
+    center_of_hand_bias = 0.775 #center offset towards knuckles for a more accurate center of hand position
+
     # tolerances
+    sigma_catch_position = 0.1
+    sigma_catch_height = 0.2
     sigma_rythem = 0.1
     sigma_drop_distance = 0.25
-    sigma_apex_height = 0.35
-    #sigma_finger_flexation = 10.0
+    sigma_apex_height = 0.15#0.1
+    sigma_delta_throw = 0.75
+    sigma_throw_accuracy = 0.25
 
-    hoarding_time_threshold = 1.0 # time threshold before hoarding penalty starts to be applied
-    hold_time_threshold = 0.1    # time threshold before catch reward starts to be applied
-    min_hand_dist = 0.5 # radius around each hand which the other hand should not enter, to prevent collisions
-    min_throw_height = 0.825 # minimum height a ball must reach to be considered a valid throw, done to prevent micro-throws. Set to just out of reach of the hand at max rotation
-    min_vertical_velocity = 0.1 # minimum vertical velocity at throw time to be considered a valid throw
+    # thresholds and limits
+    catch_payout_time = 0.1         # how long after a catch the catch reward is paid out over, designed to spread the reward out so the agent holds onto the ball and controls the catch
+    hoarding_time_threshold = 0.5   # time threshold before hoarding penalty starts to be applied
+    
+    close_threshold = 0.2         # threshold for finger joint to be considered "closed"
+    open_threshold = -0.2           # threshold for finger joint to be considered "open"
+    contact_threshold = 0.05      # in Newtons, sensor contact threshold to consider a ball "in contact" with the hand
+
+    max_catch_height = 0.525
+    max_drift_velocity = 0.2
+    max_drop_penalty = -1.0
+    min_drop_penalty = -0.1
+    max_speed_reward = 3.0
+    min_delta_throw_height = -0.1    # minimum height difference between throw and catch to be considered a valid throw
+    #min_delta_throw_height = 0.1    # minimum height a ball must reach to be considered a valid throw, done to prevent micro-throws.
+    min_hand_dist = 0.4             # radius around each hand which the other hand should not enter
+    min_throw_velocity = 1.0
+    min_vertical_velocity = -0.1    # minimum vertical velocity at throw time to be considered a valid throw

@@ -27,12 +27,11 @@ params:
           name: default
         sigma_init:
           name: const_initializer
-          val: -1.0
+          val: -1.6
         fixed_sigma: True
     mlp:
       # units: [1024, 512, 256, 128] # needs wayyyyy more model capacity for juggling, original [32, 32]
       units: [512, 256, 128]
-      #units: [256, 128]
       activation: elu
       d2rl: False
 
@@ -68,10 +67,10 @@ params:
     save_best_after: 50
     save_frequency: 25
     grad_norm: 1.0
-    entropy_coef: 0.02 # encourage exploration
+    entropy_coef: 0.01 # encourage exploration
     truncate_grads: True
     e_clip: 0.2
-    horizon_length: 64 # ~= 4 seconds, needs to see longer horizon for juggling, originally 32
+    horizon_length: 128 # ~4 seconds, needs to see longer horizon for juggling, originally 32
     minibatch_size: 65536 # IMPORTANT: change whenever you change num envs, originally 16384, if you have 4096 envs, set to 4096*8 = 32768
     mini_epochs: 5
     critic_coef: 4
