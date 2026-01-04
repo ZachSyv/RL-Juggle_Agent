@@ -66,7 +66,7 @@ class JugglingAgentEnv(DirectRLEnv):
             dtype=torch.float32)
 
         right_hand_start_pos = self.cfg.hand_pos[1]
-        right_ball_start_pos = self.cfg.ball_offset[2]
+        right_ball_start_pos = self.cfg.ball_offset[0] #[2]
         self.right_start_pos = torch.tensor(
             [right_hand_start_pos[0] + right_ball_start_pos[0], right_hand_start_pos[1] + right_ball_start_pos[1], right_hand_start_pos[2] + right_ball_start_pos[2]],
             device=device, 
@@ -158,24 +158,30 @@ class JugglingAgentEnv(DirectRLEnv):
         alpha = 0.8 # smoothing factor
         self.actions_smooth = alpha * current_action + (1.0 - alpha) * self.actions_smooth
         
-        def scale(x, lower, upper): # we scale so the values are both normalized and within joint limits
-            return 0.5 * (x + 1) * (upper - lower) + lower
-        
         action_left = self.actions_smooth[:, :5]
         target_left = self.target_L
-        target_left.fill_(0.0)
+        target_left.copy_(self.init_left_joint_pos)
+        # 1. ELBOW: Apply Action as Offset
+        # target = default + (action * scale)
+        elbow_ids = self.left_elbow_joint
+        target_left[:, elbow_ids] += action_left[:, 0:2] * self.cfg.action_scale
         
-        target_left[:, self.left_elbow_joint] = scale(
-            action_left[:, 0:2], 
-            self.left_lower_limits[:, self.left_elbow_joint], 
-            self.left_upper_limits[:, self.left_elbow_joint]
-        )
-        target_left[:, self.left_wrist_joints] = scale(
-            action_left[:, 2:4], 
-            self.left_lower_limits[:, self.left_wrist_joints], 
-            self.left_upper_limits[:, self.left_wrist_joints]
+        # Clamp to physical limits so we don't break the robot
+        target_left[:, elbow_ids] = torch.max(
+            torch.min(target_left[:, elbow_ids], self.left_upper_limits[:, elbow_ids]), 
+            self.left_lower_limits[:, elbow_ids]
         )
 
+        # 2. WRIST: Apply Action as Offset
+        wrist_ids = self.left_wrist_joints
+        target_left[:, wrist_ids] += action_left[:, 2:4] * self.cfg.action_scale
+        
+        target_left[:, wrist_ids] = torch.max(
+            torch.min(target_left[:, wrist_ids], self.left_upper_limits[:, wrist_ids]), 
+            self.left_lower_limits[:, wrist_ids]
+        )
+
+        # 3. FINGERS (Grip Logic - Keep as is)
         self.grip_state[:, 0] = torch.where(
             action_left[:, 4] > self.cfg.close_threshold, True,
             torch.where(action_left[:, 4] < self.cfg.open_threshold, False, self.grip_state[:, 0])
@@ -187,21 +193,31 @@ class JugglingAgentEnv(DirectRLEnv):
             self.left_finger_open
         )
 
+        # --- RIGHT HAND ---
         action_right = self.actions_smooth[:, 5:]
         target_right = self.target_R
-        target_right.fill_(0.0)
+        # Start with DEFAULT
+        target_right.copy_(self.init_right_joint_pos)
         
-        target_right[:, self.right_elbow_joint] = scale(
-            action_right[:, 0:2], 
-            self.right_lower_limits[:, self.right_elbow_joint], 
-            self.right_upper_limits[:, self.right_elbow_joint]
-        )
-        target_right[:, self.right_wrist_joints] = scale(
-            action_right[:, 2:4], 
-            self.right_lower_limits[:, self.right_wrist_joints], 
-            self.right_upper_limits[:, self.right_wrist_joints]
+        # 1. ELBOW
+        elbow_ids_r = self.right_elbow_joint
+        target_right[:, elbow_ids_r] += action_right[:, 0:2] * self.cfg.action_scale
+        
+        target_right[:, elbow_ids_r] = torch.max(
+            torch.min(target_right[:, elbow_ids_r], self.right_upper_limits[:, elbow_ids_r]), 
+            self.right_lower_limits[:, elbow_ids_r]
         )
 
+        # 2. WRIST
+        wrist_ids_r = self.right_wrist_joints
+        target_right[:, wrist_ids_r] += action_right[:, 2:4] * self.cfg.action_scale
+        
+        target_right[:, wrist_ids_r] = torch.max(
+            torch.min(target_right[:, wrist_ids_r], self.right_upper_limits[:, wrist_ids_r]), 
+            self.right_lower_limits[:, wrist_ids_r]
+        )
+
+        # 3. FINGERS
         self.grip_state[:, 1] = torch.where(
             action_right[:, 4] > self.cfg.close_threshold, True,
             torch.where(action_right[:, 4] < self.cfg.open_threshold, False, self.grip_state[:, 1])
@@ -213,9 +229,9 @@ class JugglingAgentEnv(DirectRLEnv):
             self.right_finger_open
         )
 
+        # Apply
         self.left_hand.set_joint_position_target(target_left, joint_ids=self.left_hand_idx)
         self.right_hand.set_joint_position_target(target_right, joint_ids=self.right_hand_idx)
-
     def _allocate_tensors(self):
         num_envs = self.num_envs
         device = self.device
@@ -715,11 +731,12 @@ class JugglingAgentEnv(DirectRLEnv):
         pos_left_batch = self.left_start_pos.repeat(len(env_ids), 1)
         pos_right_batch = self.right_start_pos.repeat(len(env_ids), 1)
         chosen_start_pos = torch.where(start_hand.unsqueeze(-1) == 0, pos_left_batch, pos_right_batch)
-        
-        spawn_noise = (torch.rand_like(chosen_start_pos) - 0.5) * 2.0 * self.cfg.spawn_randomized_offset_range
-        spawn_noise[:, 2] = 0.0  # No vertical noise
-        chosen_start_pos += spawn_noise
 
+        random_spawn_scales = torch.tensor([self.cfg.spawn_randomized_offset_range_x, self.cfg.spawn_randomized_offset_range_y, self.cfg.spawn_randomized_offset_range_z], device=self.device)
+        spawn_noise = (torch.rand_like(chosen_start_pos) - 0.5) * 2.0
+        spawn_noise *= random_spawn_scales
+        chosen_start_pos += spawn_noise
+        
         ball = self.ball1
         default_state = ball.data.default_root_state[env_ids].clone()
         default_state[:, :3] = self.scene.env_origins[env_ids] 
@@ -732,13 +749,13 @@ class JugglingAgentEnv(DirectRLEnv):
         
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device)
-
-        random_hand_start = torch.randint(0, 2, (len(env_ids),), device=self.device)
-        self.ball_throw_hand[env_ids] = random_hand_start
-        self._reset_ball_pos(env_ids)
             
         self._apply_init_joint_pose(self.left_hand, self.init_left_joint_pos, env_ids, self.left_hand_idx)
         self._apply_init_joint_pose(self.right_hand, self.init_right_joint_pos, env_ids, self.right_hand_idx)
+        
+        random_hand_start = torch.randint(0, 2, (len(env_ids),), device=self.device)
+        self.ball_throw_hand[env_ids] = random_hand_start
+        self._reset_ball_pos(env_ids)
         
         for _ in range(1):
             self.sim.step()

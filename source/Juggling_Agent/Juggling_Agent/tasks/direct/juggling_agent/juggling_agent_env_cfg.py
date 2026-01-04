@@ -34,7 +34,7 @@ def get_hand_cfg(prim_name, usd_file_name, pos, rot, joint_pos):
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 disable_gravity=True,
                 retain_accelerations=True,
-                max_depenetration_velocity=10.0,
+                max_depenetration_velocity=2.0,
             ),
             articulation_props=sim_utils.ArticulationRootPropertiesCfg(
                 enabled_self_collisions=True,
@@ -265,7 +265,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     ball_offset = [
         (-0.33, 0.0, 0.055),#(-0.36823, -0.03328, 0.0068),
         (-0.29534, 0.01543, 0.02894),
-        (-0.31156, 0.0074, 0.02503),
+        (-0.3, 0.00, 0.055),
     ]
     ball_anchor = [0, 0, 1]
     ball_radius = 0.0375
@@ -569,7 +569,10 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     ground_height = 0.0
     out_of_bounds_radius = 2.0 # radius from the origin in the xy-plane, if a ball gets thrown beyond this, the episode terminates. Implimented to prevent the agent from launching balls and going "hey, no negative rewards were given, so I can just keep throwing them away"
     center_of_hand_bias = 0.775 #center offset towards knuckles for a more accurate center of hand position
-    spawn_randomized_offset_range = 0.02 # 2cm, random offset applied to ball spawn position to prevent overfitting
+    spawn_randomized_offset_range_x = 0.045 # 4.5cm, random offset applied to ball spawn position to prevent overfitting
+    spawn_randomized_offset_range_y = 0.0225   # 2.25cm
+    spawn_randomized_offset_range_z = 0.0   # 0cm, keep z consistent to prevent dropping in/clipping issues
+    action_scale = 1.5
 
 
     # tolerances
