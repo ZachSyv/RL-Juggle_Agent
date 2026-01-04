@@ -175,70 +175,95 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
         )
     )
 
+    flat_joint_pos = {
+        # WRIST: Keep neutral or slightly extended to flatten the palm relative to the arm
+        "WRJ1": 0.0,
+        "WRJ2": 0.0, 
+        
+        # THUMB: Abduct (Spread out) to make a wider shelf, but don't curl.
+        "THJ1": math.radians(60.0), # Spread out
+        "THJ2": math.radians(0.0),  # No flexion
+        "THJ3": math.radians(0.0),
+        "THJ4": math.radians(0.0),
+        "THJ5": math.radians(0.0),
+
+        # FINGERS: All 0.0 (Fully Extended Flat)
+        # J1 is Abduction (Spread), J2-J4 are Flexion (Curl)
+        "FFJ1": math.radians(0.0), "FFJ2": 0.0, "FFJ3": 0.0, "FFJ4": 0.0,
+        "MFJ1": math.radians(0.0), "MFJ2": 0.0, "MFJ3": 0.0, "MFJ4": 0.0,
+        "RFJ1": math.radians(0.0), "RFJ2": 0.0, "RFJ3": 0.0, "RFJ4": 0.0,
+        "LFJ1": math.radians(0.0), "LFJ2": 0.0, "LFJ3": 0.0, "LFJ4": 0.0, "LFJ5": 0.0,
+        
+        "elbow_bend": math.radians(0.0),
+        "elbow_rotate": math.radians(0.0),
+    }
+
     # Initial Joint Position
-    left_joint_pos = {
-        "elbow_bend": math.radians(4.9),
-        "elbow_rotate": math.radians(4.9),
-        "WRJ1": math.radians(-7.0),
-        "WRJ2": math.radians(0.5),
-        "THJ1": math.radians(42.0),
-        "THJ2": math.radians(10.0),
-        "THJ3": math.radians(0.0),
-        "THJ4": math.radians(40.0),
-        "THJ5": math.radians(-2.0),
-        "FFJ1": math.radians(37.5),
-        "FFJ2": math.radians(52.0),
-        "FFJ3": math.radians(-1.3),
-        "FFJ4": math.radians(-18.5),
-        "MFJ1": math.radians(37.1),
-        "MFJ2": math.radians(55.2),
-        "MFJ3": math.radians(12.1),
-        "MFJ4": math.radians(14.0),
-        "RFJ1": math.radians(10.9),
-        "RFJ2": math.radians(35.0),
-        "RFJ3": math.radians(90.0),
-        "RFJ4": math.radians(-16.5),
-        "LFJ1": math.radians(36.3),
-        "LFJ2": math.radians(11.1),
-        "LFJ3": math.radians(90.0),
-        "LFJ4": math.radians(-19.9),
-        "LFJ5": math.radians(6.0),
-    }
-    right_joint_pos = {
-        "elbow_bend": math.radians(4.9),
-        "elbow_rotate": math.radians(4.9),
-        "WRJ1": math.radians(-6.9),
-        "WRJ2": math.radians(0.0),
-        "THJ1": math.radians(30.2),
-        "THJ2": math.radians(39.9),
-        "THJ3": math.radians(0.0),
-        "THJ4": math.radians(69.9),
-        "THJ5": math.radians(-20.0),
-        "FFJ1": math.radians(43.1),
-        "FFJ2": math.radians(13.1),
-        "FFJ3": math.radians(86.0),
-        "FFJ4": math.radians(-19.9),
-        "MFJ1": math.radians(39.3),
-        "MFJ2": math.radians(17.7),
-        "MFJ3": math.radians(82.6),
-        "MFJ4": math.radians(0.0),
-        "RFJ1": math.radians(32.4),
-        "RFJ2": math.radians(23.6),
-        "RFJ3": math.radians(81.9),
-        "RFJ4": math.radians(-8.0),
-        "LFJ1": math.radians(52.0),
-        "LFJ2": math.radians(72.5),
-        "LFJ3": math.radians(90.0),
-        "LFJ4": math.radians(15.0),
-        "LFJ5": math.radians(4.0),
-    }
+    # left_joint_pos = {
+    #     "elbow_bend": math.radians(4.9),
+    #     "elbow_rotate": math.radians(4.9),
+    #     "WRJ1": math.radians(-7.0),
+    #     "WRJ2": math.radians(0.5),
+    #     "THJ1": math.radians(42.0),
+    #     "THJ2": math.radians(10.0),
+    #     "THJ3": math.radians(0.0),
+    #     "THJ4": math.radians(40.0),
+    #     "THJ5": math.radians(-2.0),
+    #     "FFJ1": math.radians(37.5),
+    #     "FFJ2": math.radians(52.0),
+    #     "FFJ3": math.radians(-1.3),
+    #     "FFJ4": math.radians(-18.5),
+    #     "MFJ1": math.radians(37.1),
+    #     "MFJ2": math.radians(55.2),
+    #     "MFJ3": math.radians(12.1),
+    #     "MFJ4": math.radians(14.0),
+    #     "RFJ1": math.radians(10.9),
+    #     "RFJ2": math.radians(35.0),
+    #     "RFJ3": math.radians(90.0),
+    #     "RFJ4": math.radians(-16.5),
+    #     "LFJ1": math.radians(36.3),
+    #     "LFJ2": math.radians(11.1),
+    #     "LFJ3": math.radians(90.0),
+    #     "LFJ4": math.radians(-19.9),
+    #     "LFJ5": math.radians(6.0),
+    # }
+    # right_joint_pos = {
+    #     "elbow_bend": math.radians(4.9),
+    #     "elbow_rotate": math.radians(4.9),
+    #     "WRJ1": math.radians(-6.9),
+    #     "WRJ2": math.radians(0.0),
+    #     "THJ1": math.radians(30.2),
+    #     "THJ2": math.radians(39.9),
+    #     "THJ3": math.radians(0.0),
+    #     "THJ4": math.radians(69.9),
+    #     "THJ5": math.radians(-20.0),
+    #     "FFJ1": math.radians(43.1),
+    #     "FFJ2": math.radians(13.1),
+    #     "FFJ3": math.radians(86.0),
+    #     "FFJ4": math.radians(-19.9),
+    #     "MFJ1": math.radians(39.3),
+    #     "MFJ2": math.radians(17.7),
+    #     "MFJ3": math.radians(82.6),
+    #     "MFJ4": math.radians(0.0),
+    #     "RFJ1": math.radians(32.4),
+    #     "RFJ2": math.radians(23.6),
+    #     "RFJ3": math.radians(81.9),
+    #     "RFJ4": math.radians(-8.0),
+    #     "LFJ1": math.radians(52.0),
+    #     "LFJ2": math.radians(72.5),
+    #     "LFJ3": math.radians(90.0),
+    #     "LFJ4": math.radians(15.0),
+    #     "LFJ5": math.radians(4.0),
+    # }
+    left_joint_pos = flat_joint_pos
+    right_joint_pos = flat_joint_pos
 
     hand_pos = [(0, -0.3, 0.4), (0, 0.3, 0.4)]
 
     # ball spawn offsets relative to hands (x, y, z)
     # first two relative to left hand, third relative to right hand
     ball_offset = [
-        (-0.36823, -0.03328, 0.0068),
+        (-0.33, 0.0, 0.055),#(-0.36823, -0.03328, 0.0068),
         (-0.29534, 0.01543, 0.02894),
         (-0.31156, 0.0074, 0.02503),
     ]
@@ -516,12 +541,12 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
 
     # reward weights
     # Continuous Penalties
-    w_hoarding = 100.0        # should be high to strongly discourage hoarding 2 balls in one hand
+    w_hoarding = 30.0        # should be high to strongly discourage hoarding 2 balls in one hand
     w_jitter = 0.01        # should be low to not overly discourage small adjustments, this is to prevent random drifting. Continuously added
     w_hands_touching = 20.0 # hands touching is very bad, high penalty
 
     # Discrete Penalties
-    w_drop = 10.0           # moderate penalty that lowers depending on how far from the hand the ball is dropped
+    w_drop = 30.0           # moderate penalty that lowers depending on how far from the hand the ball is dropped
     w_drift = 25.0         # penatly for throwing forwards/backwards. Strong to encourage throws on the y-axis
 
     # Continuous Rewards
@@ -544,6 +569,8 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     ground_height = 0.0
     out_of_bounds_radius = 2.0 # radius from the origin in the xy-plane, if a ball gets thrown beyond this, the episode terminates. Implimented to prevent the agent from launching balls and going "hey, no negative rewards were given, so I can just keep throwing them away"
     center_of_hand_bias = 0.775 #center offset towards knuckles for a more accurate center of hand position
+    spawn_randomized_offset_range = 0.02 # 2cm, random offset applied to ball spawn position to prevent overfitting
+
 
     # tolerances
     sigma_catch_position = 0.1
@@ -551,7 +578,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     sigma_rythem = 0.1
     sigma_drop_distance = 0.25
     sigma_apex_height = 0.15#0.1
-    sigma_delta_throw = 0.75
+    sigma_delta_throw = 0.8
     sigma_throw_accuracy = 0.25
 
     # thresholds and limits

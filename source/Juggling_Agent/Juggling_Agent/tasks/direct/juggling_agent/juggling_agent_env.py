@@ -58,6 +58,20 @@ class JugglingAgentEnv(DirectRLEnv):
         self.ball_spawn_offsets = torch.tensor(self.cfg.ball_offset, device=self.device, dtype=torch.float32)
         self.ball_anchors = torch.tensor(self.cfg.ball_anchor, device=self.device, dtype=torch.float32)
 
+        left_hand_start_pos = self.cfg.hand_pos[0]
+        left_ball_start_pos = self.cfg.ball_offset[0]
+        self.left_start_pos = torch.tensor(
+            [left_hand_start_pos[0] + left_ball_start_pos[0], left_hand_start_pos[1] + left_ball_start_pos[1], left_hand_start_pos[2] + left_ball_start_pos[2]],
+            device=device, 
+            dtype=torch.float32)
+
+        right_hand_start_pos = self.cfg.hand_pos[1]
+        right_ball_start_pos = self.cfg.ball_offset[2]
+        self.right_start_pos = torch.tensor(
+            [right_hand_start_pos[0] + right_ball_start_pos[0], right_hand_start_pos[1] + right_ball_start_pos[1], right_hand_start_pos[2] + right_ball_start_pos[2]],
+            device=device, 
+            dtype=torch.float32)
+
         # we use a combintation of palm and knuckle position to get a more accurate hand center
         wrist_L_ids, _ = self.left_hand.find_bodies(".*palm")
         wrist_R_ids, _ = self.right_hand.find_bodies(".*palm")
@@ -697,10 +711,19 @@ class JugglingAgentEnv(DirectRLEnv):
     def _reset_ball_pos(self, env_ids: Sequence[int] | None):
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device)
+        start_hand = self.ball_throw_hand[env_ids]
+        pos_left_batch = self.left_start_pos.repeat(len(env_ids), 1)
+        pos_right_batch = self.right_start_pos.repeat(len(env_ids), 1)
+        chosen_start_pos = torch.where(start_hand.unsqueeze(-1) == 0, pos_left_batch, pos_right_batch)
+        
+        spawn_noise = (torch.rand_like(chosen_start_pos) - 0.5) * 2.0 * self.cfg.spawn_randomized_offset_range
+        spawn_noise[:, 2] = 0.0  # No vertical noise
+        chosen_start_pos += spawn_noise
+
         ball = self.ball1
         default_state = ball.data.default_root_state[env_ids].clone()
         default_state[:, :3] = self.scene.env_origins[env_ids] 
-        default_state[:, :3] += self.init_ball_pos[0, :] 
+        default_state[:, :3] += chosen_start_pos
         default_state[:, 7:] = 0.0 
         ball.write_root_state_to_sim(default_state, env_ids=env_ids)
 
@@ -709,11 +732,13 @@ class JugglingAgentEnv(DirectRLEnv):
         
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device)
+
+        random_hand_start = torch.randint(0, 2, (len(env_ids),), device=self.device)
+        self.ball_throw_hand[env_ids] = random_hand_start
+        self._reset_ball_pos(env_ids)
             
         self._apply_init_joint_pose(self.left_hand, self.init_left_joint_pos, env_ids, self.left_hand_idx)
         self._apply_init_joint_pose(self.right_hand, self.init_right_joint_pos, env_ids, self.right_hand_idx)
-        
-        self._reset_ball_pos(env_ids)
         
         for _ in range(1):
             self.sim.step()
@@ -735,9 +760,8 @@ class JugglingAgentEnv(DirectRLEnv):
 
         self.detect_events()
 
-        active_anchors = self.cfg.ball_anchor[0]
-        anchors = torch.tensor(active_anchors, device=self.device, dtype=torch.long)
-        self.ball_throw_hand[env_ids] = anchors
+        # active_anchors = self.cfg.ball_anchor[0]
+        # anchors = torch.tensor(active_anchors, device=self.device, dtype=torch.long)
         
         self.ball_catch_hand[env_ids] = -1
 
