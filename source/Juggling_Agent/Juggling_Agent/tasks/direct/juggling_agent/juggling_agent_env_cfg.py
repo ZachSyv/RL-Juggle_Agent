@@ -81,18 +81,20 @@ def get_hand_cfg(prim_name, usd_file_name, pos, rot, joint_pos):
             # ),
             "elbows": ImplicitActuatorCfg(
                 joint_names_expr=["elbow_(rotate|bend)"],
-                effort_limit_sim=40.0, # Elbows are strong
-                stiffness=10.0,
-                damping=2.0,           # Higher damping for stability
+                effort_limit_sim=50.0, # Elbows are strong
+                stiffness=100.0,
+                damping=10.0,           # Higher damping for stability
+                velocity_limit_sim=5.0,    # Limit velocity for stability
             ),
             "wrists": ImplicitActuatorCfg(
                 joint_names_expr=["WRJ.*"],
                 effort_limit_sim={
-                    "WRJ2": 4.785,
+                    "WRJ2": 5.785,
                     "WRJ1": 2.175,
                 },
-                stiffness=6.0,
-                damping=0.5,
+                stiffness=40.0,
+                damping=2.00,
+                velocity_limit_sim=8.0,
             ),
             "fingers": ImplicitActuatorCfg(
                 joint_names_expr=[
@@ -112,13 +114,14 @@ def get_hand_cfg(prim_name, usd_file_name, pos, rot, joint_pos):
                     "THJ1": 0.81,
                 },
                 stiffness={
-                    "(FF|MF|RF|LF|TH)J(4|3|2|1)": 4.0,
-                    "(LF|TH)J5": 5.0,
+                    "(FF|MF|RF|LF|TH)J(4|3|2|1)": 10.0,
+                    "(LF|TH)J5": 10.0,
                 },
                 damping={
-                    "(FF|MF|RF|LF|TH)J(4|3|2|1)": 0.2,
-                    "(LF|TH)J5": 0.2,
+                    "(FF|MF|RF|LF|TH)J(4|3|2|1)": 0.5,
+                    "(LF|TH)J5": 0.5,
                 },
+                velocity_limit_sim=5.0,
             ),
         },
         actuator_value_resolution_debug_print=False
@@ -151,10 +154,11 @@ def get_ball_cfg(prim_name, radius, pos):
 @configclass
 class JugglingAgentEnvCfg(DirectRLEnvCfg):
     # env
-    decimation = 1
-    episode_length_s = 7.0
+    decimation = 4
+    episode_length_s = 5.0
 
     num_balls = 1
+    should_cross = (num_balls % 2 == 1)  # cross if odd number of balls
     num_hands = 2
     action_space = num_hands * 5 # 5 actions per hand, 2 for elbow, 2 for wrist, 1 for open/close fingers
     observation_space = 52 * 2 + 10 + 3 * num_balls * 2 + 7 * num_hands # 52 joint pos + 52 joint vel + 3*num_balls ball pos + 3*num_balls ball vel + 3*num_hands pos + 4*num_hands quaternion
@@ -162,7 +166,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
 
     # simulation
     sim: SimulationCfg = SimulationCfg(
-        dt=1 / 100,
+        dt=1 / 200,
         render_interval=decimation,
         physx=sim_utils.PhysxCfg(
             # Enable CCD globally for the scene
@@ -196,6 +200,20 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
         
         "elbow_bend": math.radians(0.0),
         "elbow_rotate": math.radians(0.0),
+    }
+    closed_joint_pos = {
+        "THJ1": 1.25, # thumb tip, full flextion interferes with fingers
+        "THJ2": 0.697,
+        "THJ3": 0.208,
+        "THJ4": 1.2, #0,7 # thumb base flexation upwards
+        "THJ5": -0.5, #thumb base flexation inwards, want it more outwards so it dosen't interfere with fingers
+
+        # FINGERS:
+        "FFJ1": 0.6, "FFJ2": 0.7, "FFJ3": 1.57, "FFJ4": 0.0,
+        "MFJ1": 0.6, "MFJ2": 0.7, "MFJ3": 1.57, "MFJ4": 0.0,
+        "RFJ1": 0.6, "RFJ2": 0.7, "RFJ3": 1.57, "RFJ4": -0.2,
+        # pinky
+        "LFJ1": 0.6, "LFJ2": 0.5, "LFJ3": 1.57, "LFJ4": -0.349, "LFJ5": 0.2,
     }
 
     # Initial Joint Position
@@ -258,14 +276,14 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     left_joint_pos = flat_joint_pos
     right_joint_pos = flat_joint_pos
 
-    hand_pos = [(0, -0.3, 0.4), (0, 0.3, 0.4)]
+    hand_pos = [(0, -0.25, 0.4), (0, 0.25, 0.4)]
 
     # ball spawn offsets relative to hands (x, y, z)
     # first two relative to left hand, third relative to right hand
     ball_offset = [
         (-0.33, 0.0, 0.055),#(-0.36823, -0.03328, 0.0068),
-        (-0.29534, 0.01543, 0.02894),
-        (-0.3, 0.00, 0.055),
+        # (-0.29534, 0.01543, 0.02894),
+        # (-0.3, 0.00, 0.055),
     ]
     ball_anchor = [0, 0, 1]
     ball_radius = 0.0375
@@ -301,6 +319,20 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
         track_air_time=False,
         # Only report contact if the other object is a ball
         filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"], 
+        debug_vis=False,
+    )
+    contact_sensor_left_wrist: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/left_hand/wrist",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_left_forearm: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/left_hand/world", # forearm path for some reason is just "world"
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
         debug_vis=False,
     )
     contact_sensor_left_metacarpal: ContactSensorCfg = ContactSensorCfg(
@@ -424,6 +456,20 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
         filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
         debug_vis=False,
     )
+    contact_sensor_right_wrist: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/right_hand/wrist",
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
+    contact_sensor_right_forearm: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/right_hand/world", # forearm path for some reason is just "world"
+        history_length=1,
+        track_air_time=False,
+        filter_prim_paths_expr=["/World/envs/env_.*/ball_.*"],
+        debug_vis=False,
+    )
     contact_sensor_right_metacarpal: ContactSensorCfg = ContactSensorCfg(
         prim_path="/World/envs/env_.*/right_hand/.*metacarpal",
         history_length=1,
@@ -541,30 +587,28 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
 
     # reward weights
     # Continuous Penalties
-    w_hoarding = 30.0        # should be high to strongly discourage hoarding 2 balls in one hand
-    w_jitter = 0.01        # should be low to not overly discourage small adjustments, this is to prevent random drifting. Continuously added
-    w_hands_touching = 20.0 # hands touching is very bad, high penalty
+    w_hoarding = 20.0        # should be high to strongly discourage hoarding 2 balls in one hand
+    w_jitter = 0.1        # should be low to not overly discourage small adjustments, this is to prevent random drifting. Continuously added
+    w_hands_touching = 15.0 # hands touching is very bad, high penalty
 
     # Discrete Penalties
-    w_drop = 30.0           # moderate penalty that lowers depending on how far from the hand the ball is dropped
-    w_drift = 25.0         # penatly for throwing forwards/backwards. Strong to encourage throws on the y-axis
-
-    # Continuous Rewards
-    w_catch_prediction = 0.5
+    w_drop = 1.0           # flat penalty to prevent the agent from giving up and dropping the ball
+    w_lazy_drop = 5.0
 
     # Discrete Rewards
-    w_delta_throw = 75.0     # reward for throwing the ball up, larger sigma to allow for early learning, and since the real goal is apex height
-    w_accuracy = 25.0       # reward for throwing the ball to where the target hand will be at catch time
-    w_apex_height = 100.0    # should be high to encourage throwing the ball up to the target height. The trick to consistent juggling is getting a consistent apex height
-    w_throw_power = 5.0
-    w_rythem = 0.0# 1.0 useless with 1 ball        # should be moderate to encourage consistent timing
-    w_catch = 250.0          # main goal, paid out over the next catch_payout_time steps. should be high to strongly encourage successful catches
-    
+    w_wide_delta_throw = 20.0     # reward for throwing the ball up, larger sigma to allow for early learning, and since the real goal is apex height
+    w_wide_accuracy = 10.0       # reward for throwing the ball to where the target hand will be at catch time
 
+    w_precise_delta_throw = 75.0
+    w_precise_accuracy = 50.0
+    w_apex_height = 100.0
+
+    #w_rythem = # should be moderate to encourage consistent timing
+    w_catch = 500.0          # main goal, paid out over the next catch_payout_time steps. should be high to strongly encourage successful catches
 
     # geometric parameters
-    target_height = 1.0#0.95 # height at which the ball apex should be
-    target_delta_height = 0.5 # target_height - hand_height, hand height is approx 0.45m when in rest position
+    target_height = 0.95 #1.0# height at which the ball apex should be
+    target_delta_height = 0.45 # target_height - hand_height - tollerance for the windup
     target_rythem = 0.4 # 60/150 seconds per throw, i.e. 2.5 throws per second
     ground_height = 0.0
     out_of_bounds_radius = 2.0 # radius from the origin in the xy-plane, if a ball gets thrown beyond this, the episode terminates. Implimented to prevent the agent from launching balls and going "hey, no negative rewards were given, so I can just keep throwing them away"
@@ -573,32 +617,35 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     spawn_randomized_offset_range_y = 0.0225   # 2.25cm
     spawn_randomized_offset_range_z = 0.0   # 0cm, keep z consistent to prevent dropping in/clipping issues
     action_scale = 1.5
+    action_smoothing = 0.5
+
+    num_ball_up_reward_scale = [1.0, 0.1, 0.0, 0.0] # how much the throw rewards are scaled based on the number of balls currently going up. 0,1,2,3
 
 
     # tolerances
-    sigma_catch_position = 0.1
-    sigma_catch_height = 0.2
-    sigma_rythem = 0.1
-    sigma_drop_distance = 0.25
-    sigma_apex_height = 0.15#0.1
-    sigma_delta_throw = 0.8
-    sigma_throw_accuracy = 0.25
+    sigma_catch_height = 0.05
+    #sigma_rythem = 0.1
+    sigma_apex_height = 0.05
+    sigma_wide_delta_throw = 0.8
+    sigma_delta_throw = 0.3
+    sigma_wide_throw_accuracy = 0.55
+    sigma_throw_accuracy = 0.075
+    sigma_delta_throw_catch_wide = 0.2
+    sigma_delta_throw_catch = 0.05
 
     # thresholds and limits
-    catch_payout_time = 0.1         # how long after a catch the catch reward is paid out over, designed to spread the reward out so the agent holds onto the ball and controls the catch
-    hoarding_time_threshold = 0.5   # time threshold before hoarding penalty starts to be applied
-    
-    close_threshold = 0.2         # threshold for finger joint to be considered "closed"
-    open_threshold = -0.2           # threshold for finger joint to be considered "open"
-    contact_threshold = 0.05      # in Newtons, sensor contact threshold to consider a ball "in contact" with the hand
+    catch_payout_time = 0.25         # how long after a catch the catch reward is paid out over, designed to spread the reward out so the agent holds onto the ball and controls the catch
+    hoarding_time_threshold = 0.75   # time threshold before hoarding penalty starts to be applied
+    start_hold_threshold = 0.75
 
-    max_catch_height = 0.525
-    max_drift_velocity = 0.2
-    max_drop_penalty = -1.0
-    min_drop_penalty = -0.1
-    max_speed_reward = 3.0
+    contact_threshold = 0.01      # in Newtons, sensor contact threshold to consider a ball "in contact" with the hand
+
+    #max_catch_height = 0.525
+    #min_catch_value = 0.005
+    catch_precise_height_ratio = 0.6
     min_delta_throw_height = -0.1    # minimum height difference between throw and catch to be considered a valid throw
     #min_delta_throw_height = 0.1    # minimum height a ball must reach to be considered a valid throw, done to prevent micro-throws.
-    min_hand_dist = 0.4             # radius around each hand which the other hand should not enter
-    min_throw_velocity = 1.0
+    min_hand_dist = 0.2             # radius around each hand which the other hand should not enter
+    min_throw_velocity = 0.25
     min_vertical_velocity = -0.1    # minimum vertical velocity at throw time to be considered a valid throw
+    above_hand_threshold = 0.05        # height above hand to consider ball "above" the hand for catching purposes
