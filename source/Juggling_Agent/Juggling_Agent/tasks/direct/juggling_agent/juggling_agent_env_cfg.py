@@ -160,8 +160,10 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     num_balls = 1
     should_cross = (num_balls % 2 == 1)  # cross if odd number of balls
     num_hands = 2
-    action_space = num_hands * 5 # 5 actions per hand, 2 for elbow, 2 for wrist, 1 for open/close fingers
-    observation_space = 52 * 2 + 10 + 3 * num_balls * 2 + 7 * num_hands # 52 joint pos + 52 joint vel + 3*num_balls ball pos + 3*num_balls ball vel + 3*num_hands pos + 4*num_hands quaternion
+    action_space = 5 # only learn for a single hand, we then mirror the actions to the other hand
+    #num_hands * 5 # 5 actions per hand, 2 for elbow, 2 for wrist, 1 for open/close fingers
+    #observation_space = 52 * 2 + 10 + 3 * num_balls * 2 + 7 * num_hands # 52 joint pos + 52 joint vel + 3*num_balls ball pos + 3*num_balls ball vel + 3*num_hands pos + 4*num_hands quaternion
+    observation_space = 52 * 2 + 5 + 3 * num_balls * 2 + 3 * num_hands
     state_space = 0
 
     # simulation
@@ -172,10 +174,10 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
             # Enable CCD globally for the scene
             enable_ccd=True, 
             # Boost GPU buffers for the larger environments
-            gpu_max_rigid_patch_count=10 * 2**19,
-            gpu_max_rigid_contact_count=10 * 2**19,
-            gpu_found_lost_pairs_capacity=10 * 2**19,
-            gpu_found_lost_aggregate_pairs_capacity=10 * 2**19,
+            gpu_max_rigid_patch_count=10 * 2**20,
+            gpu_max_rigid_contact_count=10 * 2**20,
+            gpu_found_lost_pairs_capacity=10 * 2**20,
+            gpu_found_lost_aggregate_pairs_capacity=10 * 2**20,
         )
     )
 
@@ -583,7 +585,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
         debug_vis=False,
     )
 
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=8192, env_spacing=4.0, replicate_physics=True) # increase num envs to 4096 if you have more GPU memory
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=16384, env_spacing=4.0, replicate_physics=True) # increase num envs to 4096 if you have more GPU memory
 
     # reward weights
     # Continuous Penalties
@@ -596,20 +598,21 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     w_lazy_drop = 5.0
 
     # Discrete Rewards
-    w_wide_delta_throw = 20.0     # reward for throwing the ball up, larger sigma to allow for early learning, and since the real goal is apex height
+    w_wide_delta_throw = 30.0     # reward for throwing the ball up, larger sigma to allow for early learning, and since the real goal is apex height
     w_wide_accuracy = 10.0       # reward for throwing the ball to where the target hand will be at catch time
 
-    w_precise_delta_throw = 75.0
+    w_precise_delta_throw = 100.0
     w_precise_accuracy = 50.0
     w_apex_height = 100.0
 
     #w_rythem = # should be moderate to encourage consistent timing
     w_catch = 500.0          # main goal, paid out over the next catch_payout_time steps. should be high to strongly encourage successful catches
 
+
     # geometric parameters
-    target_height = 0.95 #1.0# height at which the ball apex should be
+    target_height = 0.9 #1.0# height at which the ball apex should be
     target_delta_height = 0.45 # target_height - hand_height - tollerance for the windup
-    target_rythem = 0.4 # 60/150 seconds per throw, i.e. 2.5 throws per second
+    #target_rythem = 0.4 # 60/150 seconds per throw, i.e. 2.5 throws per second
     ground_height = 0.0
     out_of_bounds_radius = 2.0 # radius from the origin in the xy-plane, if a ball gets thrown beyond this, the episode terminates. Implimented to prevent the agent from launching balls and going "hey, no negative rewards were given, so I can just keep throwing them away"
     center_of_hand_bias = 0.775 #center offset towards knuckles for a more accurate center of hand position
@@ -630,8 +633,8 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
     sigma_delta_throw = 0.3
     sigma_wide_throw_accuracy = 0.55
     sigma_throw_accuracy = 0.075
-    sigma_delta_throw_catch_wide = 0.2
-    sigma_delta_throw_catch = 0.05
+    sigma_delta_throw_catch_wide = 0.25
+    sigma_delta_throw_catch = 0.1
 
     # thresholds and limits
     catch_payout_time = 0.25         # how long after a catch the catch reward is paid out over, designed to spread the reward out so the agent holds onto the ball and controls the catch
@@ -642,7 +645,7 @@ class JugglingAgentEnvCfg(DirectRLEnvCfg):
 
     #max_catch_height = 0.525
     #min_catch_value = 0.005
-    catch_precise_height_ratio = 0.6
+    catch_precise_height_ratio = 0.95
     min_delta_throw_height = -0.1    # minimum height difference between throw and catch to be considered a valid throw
     #min_delta_throw_height = 0.1    # minimum height a ball must reach to be considered a valid throw, done to prevent micro-throws.
     min_hand_dist = 0.2             # radius around each hand which the other hand should not enter
