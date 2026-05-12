@@ -1,23 +1,16 @@
 params:
   seed: 42
-
-  # environment wrapper clipping
   env:
-    # added to the wrapper
     clip_observations: 5.0
     # can make custom wrapper?
     clip_actions: 1.0
-
   algo:
     name: a2c_continuous
-
   model:
     name: continuous_a2c_logstd
-
-  # doesn't have this fine grained control but made it close
   network:
     name: actor_critic
-    separate: False
+    separate: True
     space:
       continuous:
         mu_activation: None
@@ -27,22 +20,19 @@ params:
           name: default
         sigma_init:
           name: const_initializer
-          val: -1.0
-        fixed_sigma: True
+          val: -0.5
+        fixed_sigma: False
     mlp:
-      # units: [1024, 512, 256, 128] # needs wayyyyy more model capacity for juggling, original [32, 32]
-      units: [512, 256, 128]
+      units: [1024, 512, 256]
+      # units: [512, 256, 128]
       activation: elu
-      d2rl: False
-
+      d2rl: True
       initializer:
         name: default
       regularizer:
         name: None
-
   load_checkpoint: False # flag which sets whether to load the checkpoint
   load_path: '' # path to the checkpoint to load
-
   config:
     name: juggling_agent_rl_games_ppo
     env_name: rlgpu
@@ -50,16 +40,16 @@ params:
     device_name: 'cuda:0'
     multi_gpu: False
     ppo: True
-    mixed_precision: False
+    mixed_precision: True
     normalize_input: True
     normalize_value: True
     num_actors: -1  # configured from the script (based on num_envs)
     reward_shaper:
-      scale_value: 0.1
+      scale_value: 0.01
     normalize_advantage: True
-    gamma: 0.99
+    gamma: 0.999 # original 0.99, make it higher to encourage long-term planning
     tau : 0.95
-    learning_rate: 1e-4 # original 5e-4, make it a bit lower for stability
+    learning_rate: 3e-4 # original 5e-4, make it a bit lower for stability
     lr_schedule: adaptive
     kl_threshold: 0.01
     score_to_win: 20000
@@ -67,13 +57,22 @@ params:
     save_best_after: 50
     save_frequency: 25
     grad_norm: 1.0
-    entropy_coef: 0.01 # encourage exploration
+    entropy_coef: 0.01
+    entropy_schedule: [
+      [0, 0.01],
+      [500, 0.005],
+      [750, 0.001]
+    ]
     truncate_grads: True
     e_clip: 0.2
-    horizon_length: 128 # ~4 seconds, needs to see longer horizon for juggling, originally 32
-    minibatch_size: 131072 # IMPORTANT: change whenever you change num envs, originally 16384, if you have 4096 envs, set to 4096*8 = 32768
-    mini_epochs: 5
-    critic_coef: 4
+    horizon_length: 512
+    # horizon_length: 128
+    # minibatch_size: 32768
+    # minibatch_size: 65536
+    minibatch_size: 131072
+    mini_epochs: 4
+    critic_coef: 2
     clip_value: True
-    seq_length: 4
+    # seq_length: 4
     bounds_loss_coef: 0.0001
+  

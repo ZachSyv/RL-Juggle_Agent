@@ -7,13 +7,14 @@ from __future__ import annotations
 
 import math
 import torch
+import re
 from collections.abc import Sequence
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation, RigidObject, RigidObjectCfg
 from isaaclab.envs import DirectRLEnv
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
-from isaaclab.utils.math import sample_uniform, quat_apply
+from isaaclab.utils.math import sample_uniform, quat_apply, quat_rotate_inverse
 from isaaclab.sensors import ContactSensor
 
 from .juggling_agent_env_cfg import JugglingAgentEnvCfg
@@ -29,138 +30,184 @@ class JugglingAgentEnv(DirectRLEnv):
         """
         # If we haven't set up the split yet (rare, but safety first), use the scene count
         if not hasattr(self, "num_physical_envs"):
+            print("[Warning] num_envs property accessed before num_physical_envs is set. Defaulting to scene num_envs.")
             return self.cfg.scene.num_envs
             
         return self.num_physical_envs * self.cfg.num_hands
+
+    def _build_jitter_weight_tensor(self):
+        """Compiles the regex dictionary into a static tensor matching the current joint order."""
+        # Initialize with a default weight of 1.0 just in case a joint is missed
+        weights = torch.ones(self.robot.num_joints, device=self.device, dtype=torch.float32)
+        
+        for i, joint_name in enumerate(self.robot.joint_names):
+            matched = False
+            for pattern, weight in self.cfg.jitter_joint_weights.items():
+                if re.match(pattern, joint_name):
+                    weights[i] = weight
+                    matched = True
+                    break # Use the first matching pattern
+            
+            if not matched:
+                print(f"[Warning] Joint '{joint_name}' did not match any jitter weight pattern. Defaulting to 1.0")
+                
+        # Expand to match (num_physical_envs, num_joints)
+        return weights.unsqueeze(0).expand(self.num_physical_envs, -1)
 
     def __init__(self, cfg: JugglingAgentEnvCfg, render_mode: str | None = None, **kwargs):
         self.num_physical_envs = cfg.scene.num_envs
         super().__init__(cfg, render_mode, **kwargs)
         device = self.device
 
-        self.left_hand_idx, _ =  self.left_hand.find_joints(".*")
-        self.right_hand_idx, _ = self.right_hand.find_joints(".*")
+        self.left_arm_idx, _ =  self.robot.find_joints("left_.*")
+        self.right_arm_idx, _ = self.robot.find_joints("right_.*")
 
-        flex_regex = "(FF|MF|RF|LF)J(3|2|1)|THJ.*|LFJ5"
-        abduction_regex = "(FF|MF|RF|LF)J4"
+        self.left_fingers_group1_idx, _ = self.robot.find_joints(".*_[123][1-4]L")
+        self.left_fingers_group2_idx, _ = self.robot.find_joints(".*_[45][1-4]L")
+        self.left_fingers_all_idx = self.left_fingers_group1_idx + self.left_fingers_group2_idx
 
-        self.left_elbow_joint, _ = self.left_hand.find_joints("elbow_(rotate|bend)")
-        self.left_wrist_joints, _ = self.left_hand.find_joints("WR.*")
-        self.left_finger_flex_joints, _ = self.left_hand.find_joints(flex_regex)
-        self.left_finger_abduction_joints, _ = self.left_hand.find_joints(abduction_regex)
+        self.right_fingers_group1_idx, _ = self.robot.find_joints(".*_[123][1-4]R")
+        self.right_fingers_group2_idx, _ = self.robot.find_joints(".*_[45][1-4]R")
+        self.right_fingers_all_idx = self.right_fingers_group1_idx + self.right_fingers_group2_idx
+
+        self.left_palm_idx = self.robot.find_bodies(".*Dex5_URDF_L.*/base_link00")[0][0]
+        self.right_palm_idx = self.robot.find_bodies(".*Dex5_URDF_R.*/base_link00")[0][0]
+
+        # Anchors used for calulating desired hand center
+        self.left_mid_knuckle_idx = self.robot.find_bodies(".*Dex5_URDF_L.*/Link_31L")[0][0]
+        self.left_ring_knuckle_idx = self.robot.find_bodies(".*Dex5_URDF_L.*/Link_41L")[0][0]
+
+        self.right_mid_knuckle_idx = self.robot.find_bodies(".*Dex5_URDF_R.*/Link_31R")[0][0]
+        self.right_ring_knuckle_idx = self.robot.find_bodies(".*Dex5_URDF_R.*/Link_41R")[0][0]
+
+        # flex_regex = "(FF|MF|RF|LF)J(3|2|1)|THJ.*|LFJ5"
+        # abduction_regex = "(FF|MF|RF|LF)J4"
+
+        # self.left_elbow_joint, _ = self.left_hand.find_joints("elbow_(rotate|bend)")
+        # self.left_wrist_joints, _ = self.left_hand.find_joints("WR.*")
+        # self.left_finger_flex_joints, _ = self.left_hand.find_joints(flex_regex)
+        # self.left_finger_abduction_joints, _ = self.left_hand.find_joints(abduction_regex)
         
-        self.right_elbow_joint, _ = self.right_hand.find_joints("elbow_(rotate|bend)")
-        self.right_wrist_joints, _ = self.right_hand.find_joints("WR.*")
-        self.right_finger_flex_joints, _ = self.right_hand.find_joints(flex_regex)
-        self.right_finger_abduction_joints, _ = self.right_hand.find_joints(abduction_regex)
+        # self.right_elbow_joint, _ = self.right_hand.find_joints("elbow_(rotate|bend)")
+        # self.right_wrist_joints, _ = self.right_hand.find_joints("WR.*")
+        # self.right_finger_flex_joints, _ = self.right_hand.find_joints(flex_regex)
+        # self.right_finger_abduction_joints, _ = self.right_hand.find_joints(abduction_regex)
 
-        self.init_left_joint_pos = self._build_init_joint_pose(self.left_hand, self.cfg.left_joint_pos)
-        self.init_right_joint_pos = self._build_init_joint_pose(self.right_hand, self.cfg.right_joint_pos)
+        # self.init_left_joint_pos = self._build_init_joint_pose(self.robot, self.cfg.left_joint_pos)
+        # self.init_right_joint_pos = self._build_init_joint_pose(self.robot, self.cfg.right_joint_pos)
 
-        self.closed_left_joint_pos = self._build_init_joint_pose(self.left_hand, self.cfg.closed_joint_pos)
-        self.closed_right_joint_pos = self._build_init_joint_pose(self.right_hand, self.cfg.closed_joint_pos)
+        # self.closed_left_joint_pos = self._build_init_joint_pose(self.robot, self.cfg.closed_joint_pos)
+        # self.closed_right_joint_pos = self._build_init_joint_pose(self.robot, self.cfg.closed_joint_pos)
 
-        self.left_lower_limits = self.left_hand.data.soft_joint_pos_limits[..., 0].clone()
-        self.left_upper_limits = self.left_hand.data.soft_joint_pos_limits[..., 1].clone()
-        self.right_lower_limits = self.right_hand.data.soft_joint_pos_limits[..., 0].clone()
-        self.right_upper_limits = self.right_hand.data.soft_joint_pos_limits[..., 1].clone()
+        # self.left_lower_limits = self.left_hand.data.soft_joint_pos_limits[..., 0].clone()
+        # self.left_upper_limits = self.left_hand.data.soft_joint_pos_limits[..., 1].clone()
+        # self.right_lower_limits = self.right_hand.data.soft_joint_pos_limits[..., 0].clone()
+        # self.right_upper_limits = self.right_hand.data.soft_joint_pos_limits[..., 1].clone()
 
-        self.left_finger_closed = self.closed_left_joint_pos[:, self.left_finger_flex_joints]
-        self.left_finger_open = self.init_left_joint_pos[:, self.left_finger_flex_joints]
+        self.init_joint_pos = self._build_init_joint_pose(self.robot, self.cfg.flat_joint_pos)
+        self.closed_joint_pos = self._build_init_joint_pose(self.robot, self.cfg.closed_joint_pos)
 
-        self.right_finger_closed = self.closed_right_joint_pos[:, self.right_finger_flex_joints]
-        self.right_finger_open = self.init_right_joint_pos[:, self.right_finger_flex_joints]
+        self.lower_limits = self.robot.data.soft_joint_pos_limits[..., 0].clone()
+        self.upper_limits = self.robot.data.soft_joint_pos_limits[..., 1].clone()
+
+        # self.left_finger_closed = self.closed_left_joint_pos[:, self.left_finger_flex_joints]
+        # self.left_finger_open = self.init_left_joint_pos[:, self.left_finger_flex_joints]
+
+        # self.right_finger_closed = self.closed_right_joint_pos[:, self.right_finger_flex_joints]
+        # self.right_finger_open = self.init_right_joint_pos[:, self.right_finger_flex_joints]
         
         self.ball_spawn_offsets = torch.tensor(self.cfg.ball_offset, device=self.device, dtype=torch.float32)
-        self.ball_anchors = torch.tensor(self.cfg.ball_anchor, device=self.device, dtype=torch.float32)
+        # self.ball_anchors = torch.tensor(self.cfg.ball_anchor, device=self.device, dtype=torch.float32)
 
-        left_hand_start_pos = self.cfg.hand_pos[0]
-        left_ball_start_pos = self.cfg.ball_offset[0]
-        self.left_start_pos = torch.tensor(
-            [left_hand_start_pos[0] + left_ball_start_pos[0], left_hand_start_pos[1] + left_ball_start_pos[1], left_hand_start_pos[2] + left_ball_start_pos[2]],
-            device=device, 
-            dtype=torch.float32)
+        # left_hand_start_pos = self.cfg.hand_pos[0]
+        # left_ball_start_pos = self.cfg.ball_offset[0]
+        # self.left_start_pos = torch.tensor(
+        #     [left_hand_start_pos[0] + left_ball_start_pos[0], left_hand_start_pos[1] + left_ball_start_pos[1], left_hand_start_pos[2] + left_ball_start_pos[2]],
+        #     device=device, 
+        #     dtype=torch.float32)
 
-        right_hand_start_pos = self.cfg.hand_pos[1]
-        right_ball_start_pos = self.cfg.ball_offset[0] #[2]
-        self.right_start_pos = torch.tensor(
-            [right_hand_start_pos[0] + right_ball_start_pos[0], right_hand_start_pos[1] + right_ball_start_pos[1], right_hand_start_pos[2] + right_ball_start_pos[2]],
-            device=device, 
-            dtype=torch.float32)
+        # right_hand_start_pos = self.cfg.hand_pos[1]
+        # right_ball_start_pos = self.cfg.ball_offset[0] #[2]
+        # self.right_start_pos = torch.tensor(
+        #     [right_hand_start_pos[0] + right_ball_start_pos[0], right_hand_start_pos[1] + right_ball_start_pos[1], right_hand_start_pos[2] + right_ball_start_pos[2]],
+        #     device=device, 
+        #     dtype=torch.float32)
 
         # we use a combintation of palm and knuckle position to get a more accurate hand center
-        wrist_L_ids, _ = self.left_hand.find_bodies(".*palm")
-        wrist_R_ids, _ = self.right_hand.find_bodies(".*palm")
-        self.left_wrist_idx = wrist_L_ids[0]
-        self.right_wrist_idx = wrist_R_ids[0]
+        # wrist_L_ids, _ = self.left_hand.find_bodies(".*palm")
+        # wrist_R_ids, _ = self.right_hand.find_bodies(".*palm")
+        # self.left_wrist_idx = wrist_L_ids[0]
+        # self.right_wrist_idx = wrist_R_ids[0]
 
-        knuckle_L_ids, _ = self.left_hand.find_bodies(".*mfproximal")
-        knuckle_R_ids, _ = self.right_hand.find_bodies(".*mfproximal")
-        self.left_knuckle_idx = knuckle_L_ids[0]
-        self.right_knuckle_idx = knuckle_R_ids[0]
+        # knuckle_L_ids, _ = self.left_hand.find_bodies(".*mfproximal")
+        # knuckle_R_ids, _ = self.right_hand.find_bodies(".*mfproximal")
+        # self.left_knuckle_idx = knuckle_L_ids[0]
+        # self.right_knuckle_idx = knuckle_R_ids[0]
 
         self.initial_hand_positions = torch.tensor(self.cfg.hand_pos, device=device, dtype=torch.float32)
 
         self.init_ball_pos = torch.tensor(self.cfg.init_ball_pos, device=device, dtype=torch.float32)
-        self.reward_buffer = torch.zeros(self.num_envs, device=device)
-        self.hoarding_threshold = self.cfg.num_balls // 2 # number of balls allowed to be held before hoarding penalty applies
+        #self.reward_buffer = torch.zeros(self.num_envs, device=device)
+        #self.hoarding_threshold = self.cfg.num_balls // 2 # number of balls allowed to be held before hoarding penalty applies
 
         # Precompute constants
         self.distance_target2ground = torch.tensor(1.0 / (self.cfg.target_height - self.cfg.ground_height), device=device)
-        self.cross_pos = torch.tensor(1.0, device=device)
-        self.cross_neg = torch.tensor(-1.0, device=device)
 
         self.sigma_apex_height_coeff = torch.tensor(-1.0 / (2 * (self.cfg.sigma_apex_height ** 2)), device=device)
-        #self.sigma_drop_distance_coeff = torch.tensor(-1.0 / (2 * (self.cfg.sigma_drop_distance ** 2)), device=device)
-        #self.sigma_rythem_coeff = torch.tensor(-1.0 / (2 * (self.cfg.sigma_rythem ** 2)), device=device)
 
         self._allocate_tensors()
         # self.total_env_steps = 0
 
     def _setup_scene(self):
-        self.left_hand = Articulation(self.cfg.left_hand_cfg)
-        self.right_hand = Articulation(self.cfg.right_hand_cfg)
-        self.ball1 = RigidObject(self.cfg.ball1_cfg)
+        # self.left_hand = Articulation(self.cfg.left_hand_cfg)
+        # self.right_hand = Articulation(self.cfg.right_hand_cfg)
+        self.robot = Articulation(self.cfg.robot_cfg)
+        self.scene.articulations["robot"] = self.robot
 
-        self.scene.articulations["left_hand"] = self.left_hand
-        self.scene.articulations["right_hand"] = self.right_hand
-        
+        self.ball1 = RigidObject(self.cfg.ball1_cfg)        
         self.scene.rigid_objects["ball1"] = self.ball1
         # self.scene.rigid_objects["ball2"] = self.ball2
         # self.scene.rigid_objects["ball3"] = self.ball3
         self.balls = [self.ball1]
+        
         self.scene.clone_environments(copy_from_source=False)
 
-        self.contact_sensor_left_palm = ContactSensor(self.cfg.contact_sensor_left_palm)
-        self.scene.sensors["contact_sensor_left_palm"] = self.contact_sensor_left_palm
-        self.contact_sensor_left_wrist = ContactSensor(self.cfg.contact_sensor_left_wrist)
-        self.scene.sensors["contact_sensor_left_wrist"] = self.contact_sensor_left_wrist
-        self.contact_sensor_left_forearm = ContactSensor(self.cfg.contact_sensor_left_forearm)
-        self.scene.sensors["contact_sensor_left_forearm"] = self.contact_sensor_left_forearm
-        self.contact_sensor_left_metacarpal = ContactSensor(self.cfg.contact_sensor_left_metacarpal)
-        self.scene.sensors["contact_sensor_left_metacarpal"] = self.contact_sensor_left_metacarpal
-        self.left_hand_sensors = []
-        for name in ["thumb", "index", "middle", "ring", "pinky"]:
-            for joint in ["proximal", "middle", "distal"]:
-                cfg_name = f"contact_sensor_left_{name}_{joint}"
-                sensor = ContactSensor(getattr(self.cfg, cfg_name))
-                self.scene.sensors[cfg_name] = sensor
-                self.left_hand_sensors.append(sensor)
-        self.contact_sensor_right_palm = ContactSensor(self.cfg.contact_sensor_right_palm)
-        self.scene.sensors["contact_sensor_right_palm"] = self.contact_sensor_right_palm
-        self.contact_sensor_right_wrist = ContactSensor(self.cfg.contact_sensor_right_wrist)
-        self.scene.sensors["contact_sensor_right_wrist"] = self.contact_sensor_right_wrist
-        self.contact_sensor_right_forearm = ContactSensor(self.cfg.contact_sensor_right_forearm)
-        self.scene.sensors["contact_sensor_right_forearm"] = self.contact_sensor_right_forearm
-        self.contact_sensor_right_metacarpal = ContactSensor(self.cfg.contact_sensor_right_metacarpal)
-        self.scene.sensors["contact_sensor_right_metacarpal"] = self.contact_sensor_right_metacarpal
-        self.right_hand_sensors = []
-        for name in ["thumb", "index", "middle", "ring", "pinky"]:
-            for joint in ["proximal", "middle", "distal"]:
-                cfg_name = f"contact_sensor_right_{name}_{joint}"
-                sensor = ContactSensor(getattr(self.cfg, cfg_name))
-                self.scene.sensors[cfg_name] = sensor
-                self.right_hand_sensors.append(sensor)
+        self.contact_sensor_left = ContactSensor(self.cfg.contact_sensor_left)
+        self.scene.sensors["contact_sensor_left"] = self.contact_sensor_left
+        
+        self.contact_sensor_right = ContactSensor(self.cfg.contact_sensor_right)
+        self.scene.sensors["contact_sensor_right"] = self.contact_sensor_right
+
+        # self.contact_sensor_left_palm = ContactSensor(self.cfg.contact_sensor_left_palm)
+        # self.scene.sensors["contact_sensor_left_palm"] = self.contact_sensor_left_palm
+        # self.contact_sensor_left_wrist = ContactSensor(self.cfg.contact_sensor_left_wrist)
+        # self.scene.sensors["contact_sensor_left_wrist"] = self.contact_sensor_left_wrist
+        # self.contact_sensor_left_forearm = ContactSensor(self.cfg.contact_sensor_left_forearm)
+        # self.scene.sensors["contact_sensor_left_forearm"] = self.contact_sensor_left_forearm
+        # self.contact_sensor_left_metacarpal = ContactSensor(self.cfg.contact_sensor_left_metacarpal)
+        # self.scene.sensors["contact_sensor_left_metacarpal"] = self.contact_sensor_left_metacarpal
+        # self.left_hand_sensors = []
+        # for name in ["thumb", "index", "middle", "ring", "pinky"]:
+        #     for joint in ["proximal", "middle", "distal"]:
+        #         cfg_name = f"contact_sensor_left_{name}_{joint}"
+        #         sensor = ContactSensor(getattr(self.cfg, cfg_name))
+        #         self.scene.sensors[cfg_name] = sensor
+        #         self.left_hand_sensors.append(sensor)
+        # self.contact_sensor_right_palm = ContactSensor(self.cfg.contact_sensor_right_palm)
+        # self.scene.sensors["contact_sensor_right_palm"] = self.contact_sensor_right_palm
+        # self.contact_sensor_right_wrist = ContactSensor(self.cfg.contact_sensor_right_wrist)
+        # self.scene.sensors["contact_sensor_right_wrist"] = self.contact_sensor_right_wrist
+        # self.contact_sensor_right_forearm = ContactSensor(self.cfg.contact_sensor_right_forearm)
+        # self.scene.sensors["contact_sensor_right_forearm"] = self.contact_sensor_right_forearm
+        # self.contact_sensor_right_metacarpal = ContactSensor(self.cfg.contact_sensor_right_metacarpal)
+        # self.scene.sensors["contact_sensor_right_metacarpal"] = self.contact_sensor_right_metacarpal
+        # self.right_hand_sensors = []
+        # for name in ["thumb", "index", "middle", "ring", "pinky"]:
+        #     for joint in ["proximal", "middle", "distal"]:
+        #         cfg_name = f"contact_sensor_right_{name}_{joint}"
+        #         sensor = ContactSensor(getattr(self.cfg, cfg_name))
+        #         self.scene.sensors[cfg_name] = sensor
+        #         self.right_hand_sensors.append(sensor)
 
         spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
         
@@ -174,77 +221,106 @@ class JugglingAgentEnv(DirectRLEnv):
         self.actions = actions.clone()
 
     def _apply_action(self) -> None:
-        num_physical_envs = self.num_physical_envs
-        current_action = self.actions
         alpha = self.cfg.action_smoothing
-        self.actions_smooth = alpha * current_action + (1.0 - alpha) * self.actions_smooth
+        self.actions_smooth = alpha * self.actions + (1.0 - alpha) * self.actions_smooth
         
 
         action_left = self.actions_smooth[:self.num_physical_envs]
-
         action_right = self.actions_smooth[self.num_physical_envs:]
 
+        target_pos = self.robot.data.joint_pos_target.clone() # target tensor for entire robot
 
-        #action_left = self.actions_smooth[:, :5]
-        target_left = self.target_L
-        target_left.copy_(self.init_left_joint_pos)
-
-
-        elbow_ids = self.left_elbow_joint
-        target_left[:, elbow_ids] += action_left[:, 0:2] * self.cfg.action_scale
-        # Clamp to physical limits so we don't break the robot
-        target_left[:, elbow_ids] = torch.max(
-            torch.min(target_left[:, elbow_ids], self.left_upper_limits[:, elbow_ids]), 
-            self.left_lower_limits[:, elbow_ids]
-        )
-
-        # 2. WRIST: Apply Action as Offset
-        wrist_ids = self.left_wrist_joints
-        target_left[:, wrist_ids] += action_left[:, 2:4] * self.cfg.action_scale
-        target_left[:, wrist_ids] = torch.max(
-            torch.min(target_left[:, wrist_ids], self.left_upper_limits[:, wrist_ids]), 
-            self.left_lower_limits[:, wrist_ids]
-        )
-
-        # 3. FINGERS
-        finger_action_L = action_left[:, 4].unsqueeze(-1)
-        percent_closed_left = (torch.clamp((finger_action_L + 1.0)/ 2.0, min=0.0, max=1.0))
-        diff_left = self.left_finger_closed - self.left_finger_open
-        target_left[:, self.left_finger_flex_joints] = self.left_finger_open + (diff_left * percent_closed_left)
-
-        # --- RIGHT HAND ---
-        #action_right = self.actions_smooth[:, 5:]
-        target_right = self.target_R
-        target_right.copy_(self.init_right_joint_pos)
-
-        # Symmetrical mapping for the right arm
-        action_right_physical = action_right.clone()
-        action_right_physical[:, 0] *= -1.0
+        # 7 Arm DOFs
+        target_pos[:, self.left_arm_idx] += action_left[:, 0:7] * self.cfg.action_scale
         
-        # 1. ELBOW
-        elbow_ids_r = self.right_elbow_joint
-        target_right[:, elbow_ids_r] += action_right_physical[:, 0:2] * self.cfg.action_scale
-        target_right[:, elbow_ids_r] = torch.max(
-            torch.min(target_right[:, elbow_ids_r], self.right_upper_limits[:, elbow_ids_r]), 
-            self.right_lower_limits[:, elbow_ids_r]
-        )
+        # Finger Group 1 (Thumb, Index, Middle)
+        group1_pct_L = torch.clamp((action_left[:, 7].unsqueeze(-1) + 1.0) / 2.0, 0.0, 1.0)
+        target_pos[:, self.left_finger_group1_idx] = self.init_joint_pos[:, self.left_finger_group1_idx] + \
+            (self.closed_joint_pos[:, self.left_finger_group1_idx] - self.init_joint_pos[:, self.left_finger_group1_idx]) * group1_pct_L
 
-        # 2. WRIST
-        wrist_ids_r = self.right_wrist_joints
-        target_right[:, wrist_ids_r] += action_right_physical[:, 2:4] * self.cfg.action_scale
-        target_right[:, wrist_ids_r] = torch.max(
-            torch.min(target_right[:, wrist_ids_r], self.right_upper_limits[:, wrist_ids_r]), 
-            self.right_lower_limits[:, wrist_ids_r]
-        )
+        # Finger Group 2 (Ring, Pinky)
+        group2_pct_L = torch.clamp((action_left[:, 8].unsqueeze(-1) + 1.0) / 2.0, 0.0, 1.0)
+        target_pos[:, self.left_finger_group2_idx] = self.init_joint_pos[:, self.left_finger_group2_idx] + \
+            (self.closed_joint_pos[:, self.left_finger_group2_idx] - self.init_joint_pos[:, self.left_finger_group2_idx]) * group2_pct_L
 
-        # 3. FINGERS
-        finger_action_R = action_right_physical[:, 4].unsqueeze(-1)
-        percent_closed_right = (torch.clamp((finger_action_R + 1.0)/ 2.0, min=0.0, max=1.0))
-        diff_right = self.right_finger_closed - self.right_finger_open
-        target_right[:, self.right_finger_flex_joints] = self.right_finger_open + (diff_right * percent_closed_right)
-        # Apply
-        self.left_hand.set_joint_position_target(target_left, joint_ids=self.left_hand_idx)
-        self.right_hand.set_joint_position_target(target_right, joint_ids=self.right_hand_idx)
+        # --- RIGHT ARM & HAND ---
+        action_right_physical = action_right.clone()
+        # Flip necessary physical joints here if Unitree URDF mirrors them structurally
+        # action_right_physical[:, 1] *= -1.0 # Example flip for shoulder roll
+        
+        target_pos[:, self.right_arm_idx] += action_right_physical[:, 0:7] * self.cfg.action_scale
+
+        group1_pct_R = torch.clamp((action_right_physical[:, 7].unsqueeze(-1) + 1.0) / 2.0, 0.0, 1.0)
+        target_pos[:, self.right_finger_group1_idx] = self.init_joint_pos[:, self.right_finger_group1_idx] + \
+            (self.closed_joint_pos[:, self.right_finger_group1_idx] - self.init_joint_pos[:, self.right_finger_group1_idx]) * group1_pct_R
+
+        group2_pct_R = torch.clamp((action_right_physical[:, 8].unsqueeze(-1) + 1.0) / 2.0, 0.0, 1.0)
+        target_pos[:, self.right_finger_group2_idx] = self.init_joint_pos[:, self.right_finger_group2_idx] + \
+            (self.closed_joint_pos[:, self.right_finger_group2_idx] - self.init_joint_pos[:, self.right_finger_group2_idx]) * group2_pct_R
+
+        # Clamp and Write
+        target_pos = torch.clamp(target_pos, self.lower_limits, self.upper_limits)
+        self.robot.set_joint_position_target(target_pos)
+        # action_left = self.actions_smooth[:, :5]
+        # target_left = self.target_L
+        # target_left.copy_(self.init_left_joint_pos)
+
+
+        # elbow_ids = self.left_elbow_joint
+        # target_left[:, elbow_ids] += action_left[:, 0:2] * self.cfg.action_scale
+        # # Clamp to physical limits so we don't break the robot
+        # target_left[:, elbow_ids] = torch.max(
+        #     torch.min(target_left[:, elbow_ids], self.left_upper_limits[:, elbow_ids]), 
+        #     self.left_lower_limits[:, elbow_ids]
+        # )
+
+        # # 2. WRIST: Apply Action as Offset
+        # wrist_ids = self.left_wrist_joints
+        # target_left[:, wrist_ids] += action_left[:, 2:4] * self.cfg.action_scale
+        # target_left[:, wrist_ids] = torch.max(
+        #     torch.min(target_left[:, wrist_ids], self.left_upper_limits[:, wrist_ids]), 
+        #     self.left_lower_limits[:, wrist_ids]
+        # )
+
+        # # 3. FINGERS
+        # finger_action_L = action_left[:, 4].unsqueeze(-1)
+        # percent_closed_left = (torch.clamp((finger_action_L + 1.0)/ 2.0, min=0.0, max=1.0))
+        # diff_left = self.left_finger_closed - self.left_finger_open
+        # target_left[:, self.left_finger_flex_joints] = self.left_finger_open + (diff_left * percent_closed_left)
+
+        # # --- RIGHT HAND ---
+        # #action_right = self.actions_smooth[:, 5:]
+        # target_right = self.target_R
+        # target_right.copy_(self.init_right_joint_pos)
+
+        # # Symmetrical mapping for the right arm
+        # action_right_physical = action_right.clone()
+        # action_right_physical[:, 0] *= -1.0
+        
+        # # 1. ELBOW
+        # elbow_ids_r = self.right_elbow_joint
+        # target_right[:, elbow_ids_r] += action_right_physical[:, 0:2] * self.cfg.action_scale
+        # target_right[:, elbow_ids_r] = torch.max(
+        #     torch.min(target_right[:, elbow_ids_r], self.right_upper_limits[:, elbow_ids_r]), 
+        #     self.right_lower_limits[:, elbow_ids_r]
+        # )
+
+        # # 2. WRIST
+        # wrist_ids_r = self.right_wrist_joints
+        # target_right[:, wrist_ids_r] += action_right_physical[:, 2:4] * self.cfg.action_scale
+        # target_right[:, wrist_ids_r] = torch.max(
+        #     torch.min(target_right[:, wrist_ids_r], self.right_upper_limits[:, wrist_ids_r]), 
+        #     self.right_lower_limits[:, wrist_ids_r]
+        # )
+
+        # # 3. FINGERS
+        # finger_action_R = action_right_physical[:, 4].unsqueeze(-1)
+        # percent_closed_right = (torch.clamp((finger_action_R + 1.0)/ 2.0, min=0.0, max=1.0))
+        # diff_right = self.right_finger_closed - self.right_finger_open
+        # target_right[:, self.right_finger_flex_joints] = self.right_finger_open + (diff_right * percent_closed_right)
+        # # Apply
+        # self.left_hand.set_joint_position_target(target_left, joint_ids=self.left_hand_idx)
+        # self.right_hand.set_joint_position_target(target_right, joint_ids=self.right_hand_idx)
 
     def _allocate_tensors(self):
         num_envs = self.num_envs
@@ -270,22 +346,26 @@ class JugglingAgentEnv(DirectRLEnv):
         self.prev_in_hand = torch.zeros((num_physical_envs, self.cfg.num_hands), device=device, dtype=torch.bool)
         self.in_hand = torch.zeros((num_physical_envs, self.cfg.num_hands), device=device, dtype=torch.bool)
         self.is_touching = torch.zeros((num_physical_envs, self.cfg.num_hands), device=device, dtype=torch.bool)
-        self.ball_pos_flat = torch.zeros((num_physical_envs, 3), device=device)
-        self.ball_vel_flat = torch.zeros((num_physical_envs, 3), device=device)
-        self.hand_pos_flat = torch.zeros((num_physical_envs, 6), device=device)
+        # self.ball_pos_flat = torch.zeros((num_physical_envs, 3), device=device)
+        # self.ball_vel_flat = torch.zeros((num_physical_envs, 3), device=device)
+        # self.hand_pos_flat = torch.zeros((num_physical_envs, 6), device=device)
 
-        #total_dof = 52
-        self.num_dof_per_hand = self.left_hand.num_joints
-        total_dof = self.num_dof_per_hand * self.cfg.num_hands
-        self.joint_pos = torch.zeros((num_physical_envs, total_dof), device=device)
-        self.joint_vel = torch.zeros((num_physical_envs, total_dof), device=device)
+        # total_dof = 52
+        # self.num_dof_per_hand = self.left_hand.num_joints
+        # total_dof = self.num_dof_per_hand * self.cfg.num_hands
+        # self.joint_pos = torch.zeros((num_physical_envs, total_dof), device=device)
+        # self.joint_vel = torch.zeros((num_physical_envs, total_dof), device=device)
 
-        #self.grip_state = torch.zeros((num_envs, self.cfg.num_hands), device=device, dtype=torch.bool)
+        # #self.grip_state = torch.zeros((num_envs, self.cfg.num_hands), device=device, dtype=torch.bool)
 
-        self.target_L = torch.zeros((num_physical_envs, len(self.left_hand_idx)), device=self.device)
-        self.target_R = torch.zeros((num_physical_envs, len(self.right_hand_idx)), device=self.device)
+        # self.target_L = torch.zeros((num_physical_envs, len(self.left_hand_idx)), device=self.device)
+        # self.target_R = torch.zeros((num_physical_envs, len(self.right_hand_idx)), device=self.device)
 
         self.initial_hand_target_position = torch.zeros((num_physical_envs, self.cfg.num_hands, 3), device=device, dtype=torch.float)
+
+        # weights = torch.tensor(self.cfg.jitter_joint_weights, device=device)
+        self.jitter_weight_tensor = self._build_jitter_weight_tensor()
+
 
         self.num_ball_up_rewards_lookup = torch.tensor(self.cfg.num_ball_up_reward_scale, device=device)
         self.ball_throw_num_already_up_scale = torch.ones((num_physical_envs, ), device=device, dtype=torch.float)
@@ -346,109 +426,167 @@ class JugglingAgentEnv(DirectRLEnv):
     #     return sigma
 
     def _get_observations(self) -> dict:
-        num_physical_envs = self.num_physical_envs
+        # left_pos = self.left_hand.data.joint_pos
+        # left_vel = self.left_hand.data.joint_vel
+        # right_pos = self.right_hand.data.joint_pos
+        # right_vel = self.right_hand.data.joint_vel
+        joint_pos = self.robot.data.joint_pos
+        joint_vel = self.robot.data.joint_vel
 
-        left_pos = self.left_hand.data.joint_pos
-        left_vel = self.left_hand.data.joint_vel
-        right_pos = self.right_hand.data.joint_pos
-        right_vel = self.right_hand.data.joint_vel
+        # hand_split = left_pos.shape[1]
 
-        hand_split = left_pos.shape[1]
+        # self.joint_pos[:, :hand_split] = left_pos
+        # self.joint_pos[:, hand_split:] = right_pos
+        # self.joint_vel[:, :hand_split] = left_vel
+        # self.joint_vel[:, hand_split:] = right_vel
 
-        self.joint_pos[:, :hand_split] = left_pos
-        self.joint_pos[:, hand_split:] = right_pos
-        self.joint_vel[:, :hand_split] = left_vel
-        self.joint_vel[:, hand_split:] = right_vel
-
-        l_wrist = self.left_hand.data.body_pos_w[:, self.left_wrist_idx]
-        r_wrist = self.right_hand.data.body_pos_w[:, self.right_wrist_idx]
-        l_knuckle = self.left_hand.data.body_pos_w[:, self.left_knuckle_idx]
-        r_knuckle = self.right_hand.data.body_pos_w[:, self.right_knuckle_idx]
+        # l_wrist = self.left_hand.data.body_pos_w[:, self.left_wrist_idx]
+        # r_wrist = self.right_hand.data.body_pos_w[:, self.right_wrist_idx]
+        # l_knuckle = self.left_hand.data.body_pos_w[:, self.left_knuckle_idx]
+        # r_knuckle = self.right_hand.data.body_pos_w[:, self.right_knuckle_idx]
 
         env_origins = self.scene.env_origins
 
-        l_wrist_local = l_wrist - env_origins
-        r_wrist_local = r_wrist - env_origins
-        l_knuckle_local = l_knuckle - env_origins
-        r_knuckle_local = r_knuckle - env_origins
+        # l_wrist_local = l_wrist - env_origins
+        # r_wrist_local = r_wrist - env_origins
+        # l_knuckle_local = l_knuckle - env_origins
+        # r_knuckle_local = r_knuckle - env_origins
 
-        self.hand_pos[:, 0] = (l_wrist_local * (1 - self.cfg.center_of_hand_bias)) + (l_knuckle_local * self.cfg.center_of_hand_bias)
-        self.hand_pos[:, 1] = (r_wrist_local * (1 - self.cfg.center_of_hand_bias)) + (r_knuckle_local * self.cfg.center_of_hand_bias)
+        l_palm_pos = self.robot.data.body_pos_w[:, self.left_palm_idx] - env_origins
+        r_palm_pos = self.robot.data.body_pos_w[:, self.right_palm_idx] - env_origins
 
-        self.ball_pos = self.ball1.data.root_pos_w
-        self.ball_pos = self.ball_pos - env_origins
+        l_mid = self.robot.data.body_pos_w[:, self.left_mid_knuckle_idx] - env_origins
+        l_ring = self.robot.data.body_pos_w[:, self.left_ring_knuckle_idx] - env_origins
+
+        r_mid = self.robot.data.body_pos_w[:, self.right_mid_knuckle_idx] - env_origins
+        r_ring = self.robot.data.body_pos_w[:, self.right_ring_knuckle_idx] - env_origins
+
+
+        # Calculate the midpoint between the middle and ring knuckles
+        l_front_anchor = (l_mid + l_ring) / 2.0
+        r_front_anchor = (r_mid + r_ring) / 2.0
+
+        # Interpolate between the palm base and the new front anchor
+        self.hand_pos[:, 0] = (l_palm_pos * (1 - self.cfg.center_of_hand_bias)) + (l_front_anchor * self.cfg.center_of_hand_bias)
+        self.hand_pos[:, 1] = (r_palm_pos * (1 - self.cfg.center_of_hand_bias)) + (r_front_anchor * self.cfg.center_of_hand_bias)
+
+
+        l_palm_quat = self.robot.data.body_quat_w[:, self.left_palm_idx]
+        r_palm_quat = self.robot.data.body_quat_w[:, self.right_palm_idx]
+
+        # self.hand_pos[:, 0] = (l_wrist_local * (1 - self.cfg.center_of_hand_bias)) + (l_knuckle_local * self.cfg.center_of_hand_bias)
+        # self.hand_pos[:, 1] = (r_wrist_local * (1 - self.cfg.center_of_hand_bias)) + (r_knuckle_local * self.cfg.center_of_hand_bias)
+
+        self.ball_pos = self.ball1.data.root_pos_w - env_origins
         self.ball_vel = self.ball1.data.root_vel_w[:, :3]
 
-        self.ball_pos_flat[:] = self.ball_pos
-        self.ball_vel_flat[:] = self.ball_vel
-        self.hand_pos_flat[:] = self.hand_pos.reshape(num_physical_envs, -1)
+        local_ball_pos_L = quat_rotate_inverse(l_palm_quat, ball_pos - l_palm_pos)
+        local_ball_vel_L = quat_rotate_inverse(l_palm_quat, ball_vel)
+        local_other_hand_L = quat_rotate_inverse(l_palm_quat, r_palm_pos - l_palm_pos)
+
+        local_ball_pos_R = quat_rotate_inverse(r_palm_quat, ball_pos - r_palm_pos)
+        local_ball_vel_R = quat_rotate_inverse(r_palm_quat, ball_vel)
+        local_other_hand_R = quat_rotate_inverse(r_palm_quat, l_palm_pos - r_palm_pos)
+
+        # self.ball_pos_flat[:] = self.ball_pos
+        # self.ball_vel_flat[:] = self.ball_vel
+        # self.hand_pos_flat[:] = self.hand_pos.reshape(self.num_physical_envs, -1)
 
         # self.left_quaternion = self.left_hand.data.body_quat_w[:, self.left_wrist_idx]
         # self.right_quaternion = self.right_hand.data.body_quat_w[:, self.right_wrist_idx]
 
-        hand_slice = self.num_dof_per_hand
+        # hand_slice = self.num_dof_per_hand
 
-        joints_L = self.joint_pos[:, :hand_slice]
-        joints_R = self.joint_pos[:, hand_slice:]
-        vel_L = self.joint_vel[:, :hand_slice]
-        vel_R = self.joint_vel[:, hand_slice:]
+        # joints_L = self.joint_pos[:, :hand_slice]
+        # joints_R = self.joint_pos[:, hand_slice:]
+        # vel_L = self.joint_vel[:, :hand_slice]
+        # vel_R = self.joint_vel[:, hand_slice:]
 
-        hand_pos_L = self.hand_pos[:, 0]
-        hand_pos_R = self.hand_pos[:, 1]
+        # hand_pos_L = self.hand_pos[:, 0]
+        # hand_pos_R = self.hand_pos[:, 1]
         # quat_L = self.left_quaternion
         # quat_R = self.right_quaternion
-        relative_ball_pos = self.ball_pos_flat
-        relative_ball_vel = self.ball_vel_flat
+        # relative_ball_pos = self.ball_pos_flat
+        # relative_ball_vel = self.ball_vel_flat
 
-        actions_L = self.actions_smooth[:self.num_physical_envs]
-        actions_R = self.actions_smooth[self.num_physical_envs:]
+        actions_L = self.actions_smooth[:self.num_physical_envs].detach() # need detach to prevent gradients flowing back
+        actions_R = self.actions_smooth[self.num_physical_envs:].detach() # need detach to prevent gradients flowing back
 
         self.detect_events()
 
         obs_left = torch.cat([
-            joints_L, joints_R,
-            vel_L, vel_R,
-            actions_L.detach(), # need detach to prevent gradients flowing back
-            relative_ball_pos, relative_ball_vel,
-            hand_pos_L, hand_pos_R,
-            #quat_L, quat_R,
+            joints, vels,
+            actions_L,
+            local_ball_pos_L, local_ball_vel_L,
+            l_palm_pos, local_other_hand_L, 
+            l_palm_quat, r_palm_quat
         ], dim=1)
 
-        relative_ball_pos_mirror = relative_ball_pos.clone()
-        relative_ball_pos_mirror[:, 1] *= -1.0
-        relative_ball_vel_mirror = relative_ball_vel.clone()
-        relative_ball_vel_mirror[:, 1] *= -1.0
+        # obs_left = torch.cat([
+        #     joints_L, joints_R,
+        #     actions_L,
+        #     # vel_L, vel_R,
+        #     # actions_L.detach(), # need detach to prevent gradients flowing back
+        #     relative_ball_pos, relative_ball_vel,
+        #     hand_pos_L, hand_pos_R,
+        #     #quat_L, quat_R,
+        # ], dim=1)
 
-        my_hand_pos_mirror = hand_pos_R.clone()
-        my_hand_pos_mirror[:, 1] *= -1.0
-        other_hand_pos_mirror = hand_pos_L.clone()
-        other_hand_pos_mirror[:, 1] *= -1.0
+        # Construct Right Obs (with parameter sharing flips)
+        joints_mirror = joints.clone()
+        vels_mirror = vels.clone()
 
-        joints_R_mirror = joints_R.clone()
-        joints_R_mirror[:, 0] *= -1.0
-        vel_R_mirror = vel_R.clone()
-        vel_R_mirror[:, 0] *= -1.0
+        l_palm_quat_mirror = r_palm_quat.clone()
+        r_palm_quat_mirror = l_palm_quat.clone()
+        l_palm_quat_mirror[:, 2:4] *= -1.0 # Mirror Y and Z
+        r_palm_quat_mirror[:, 2:4] *= -1.0
 
-        joints_L_mirror = joints_L.clone()
-        joints_L_mirror[:, 0] *= -1.0
-        vel_L_mirror = vel_L.clone()
-        vel_L_mirror[:, 0] *= -1.0
+        local_ball_pos_R_mirror = local_ball_pos_R.clone()
+        local_ball_pos_R_mirror[:, 1] *= -1.0 # Assuming Y is lateral in local frame
+        local_ball_vel_R_mirror = local_ball_vel_R.clone()
+        local_ball_vel_R_mirror[:, 1] *= -1.0
+        local_other_hand_R_mirror = local_other_hand_R.clone()
+        local_other_hand_R_mirror[:, 1] *= -1.0
+
+        # relative_ball_pos_mirror = relative_ball_pos.clone()
+        # relative_ball_pos_mirror[:, 1] *= -1.0
+        # relative_ball_vel_mirror = relative_ball_vel.clone()
+        # relative_ball_vel_mirror[:, 1] *= -1.0
+
+        # my_hand_pos_mirror = hand_pos_R.clone()
+        # my_hand_pos_mirror[:, 1] *= -1.0
+        # other_hand_pos_mirror = hand_pos_L.clone()
+        # other_hand_pos_mirror[:, 1] *= -1.0
+
+        # joints_R_mirror = joints_R.clone()
+        # joints_R_mirror[:, 0] *= -1.0
+        # vel_R_mirror = vel_R.clone()
+        # vel_R_mirror[:, 0] *= -1.0
+
+        # joints_L_mirror = joints_L.clone()
+        # joints_L_mirror[:, 0] *= -1.0
+        # vel_L_mirror = vel_L.clone()
+        # vel_L_mirror[:, 0] *= -1.0
 
         obs_right = torch.cat([
-            joints_R_mirror, joints_L_mirror,
-            vel_R_mirror, vel_L_mirror,
-            actions_R.detach(), # need detach to prevent gradients flowing back
-            relative_ball_pos_mirror, relative_ball_vel_mirror,
-            my_hand_pos_mirror, other_hand_pos_mirror,
-            #quat_R, quat_L,
+            joints_mirror, vels_mirror,
+            actions_R,
+            local_ball_pos_R_mirror, local_ball_vel_R_mirror,
+            r_palm_pos, local_other_hand_R_mirror,
+            l_palm_quat_mirror, r_palm_quat_mirror
         ], dim=1)
 
-        full_obs = torch.cat([obs_left, obs_right], dim=0)
-        full_obs = torch.nan_to_num(full_obs)
+        # obs_right = torch.cat([
+        #     joints_R_mirror, joints_L_mirror,
+        #     vel_R_mirror, vel_L_mirror,
+        #     actions_R.detach(), # need detach to prevent gradients flowing back
+        #     relative_ball_pos_mirror, relative_ball_vel_mirror,
+        #     my_hand_pos_mirror, other_hand_pos_mirror,
+        #     #quat_R, quat_L,
+        # ], dim=1)
 
-        #obs = torch.nan_to_num(obs)
-        observations = {"policy": full_obs}
-        return observations
+        full_obs = torch.cat([obs_left, obs_right], dim=0)
+        return {"policy": torch.nan_to_num(full_obs)}
 
     def detect_events(self):
         num_physical_envs = self.num_physical_envs
@@ -655,7 +793,11 @@ class JugglingAgentEnv(DirectRLEnv):
         ################
         ''' Penalty for rapid changes in actions, encouraging smooth movements '''
         delta_a = self.actions_smooth - self.prev_actions_smooth
-        jitter = torch.sum(delta_a**2, dim=-1)
+        # jitter = torch.sum(delta_a**2, dim=-1)
+
+        weighted_squared_delta = self.jitter_weight_tensor * (delta_a ** 2)
+        jitter = torch.sum(weighted_squared_delta, dim=-1)
+
         jitter_L = jitter[:num_physical_envs]
         jitter_R = jitter[num_physical_envs:]
         r_jitter_L = -self.cfg.w_jitter * jitter_L
@@ -882,12 +1024,32 @@ class JugglingAgentEnv(DirectRLEnv):
 
         return virtual_terminated, time_out
 
-    def _build_init_joint_pose(self, hand: Articulation, targets: dict[str, float]):
-        name_to_idx = {n: i for i, n in enumerate(hand.joint_names)}
-        joint_pos = torch.zeros((hand.num_joints,), device=self.device)
-        for name, val in targets.items():
-            if name in name_to_idx:
-                joint_pos[name_to_idx[name]] = val
+    # def _build_init_joint_pose(self, hand: Articulation, targets: dict[str, float]):
+    #     name_to_idx = {n: i for i, n in enumerate(hand.joint_names)}
+    #     joint_pos = torch.zeros((hand.num_joints,), device=self.device)
+    #     for name, val in targets.items():
+    #         if name in name_to_idx:
+    #             joint_pos[name_to_idx[name]] = val
+    #     joint_pos = joint_pos.repeat(self.num_physical_envs, 1)
+    #     return joint_pos
+    def _build_init_joint_pose(self, robot: Articulation, targets: dict[str, float]):
+        joint_pos = torch.zeros((robot.num_joints,), device=self.device)
+        
+        # Iterate through every joint in the robot (all 54 of them)
+        for i, joint_name in enumerate(robot.joint_names):
+            matched = False
+            # Check if the joint name matches any regex pattern in our config dictionary
+            for pattern, val in targets.items():
+                if re.match(pattern, joint_name):
+                    joint_pos[i] = val
+                    matched = True
+                    break # Stop checking once we find the first matching pattern
+            
+            if not matched:
+                # Useful debug print so you know if you missed a joint in your config
+                print(f"[Init Pose] No target found for {joint_name}, defaulting to 0.0")
+
+        # Expand to match the number of environments
         joint_pos = joint_pos.repeat(self.num_physical_envs, 1)
         return joint_pos
 
@@ -905,10 +1067,15 @@ class JugglingAgentEnv(DirectRLEnv):
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device)
         start_hand = self.ball_throw_hand[env_ids]
-        pos_left_batch = self.left_start_pos.repeat(len(env_ids), 1)
-        pos_right_batch = self.right_start_pos.repeat(len(env_ids), 1)
-        chosen_start_pos = torch.where(start_hand.unsqueeze(-1) == 0, pos_left_batch, pos_right_batch)
-
+        # pos_left_batch = self.left_start_pos.repeat(len(env_ids), 1)
+        # pos_right_batch = self.right_start_pos.repeat(len(env_ids), 1)
+        # chosen_start_pos = torch.where(start_hand.unsqueeze(-1) == 0, pos_left_batch, pos_right_batch)
+        left_targets = self.initial_hand_target_position[env_ids, 0]
+        right_targets = self.initial_hand_target_position[env_ids, 1]
+        
+        chosen_start_pos = torch.where(start_hand.unsqueeze(-1) == 0, left_targets, right_targets)
+        chosen_start_pos += self.ball_spawn_offsets[0]
+        
         random_spawn_scales = torch.tensor([self.cfg.spawn_randomized_offset_range_x, self.cfg.spawn_randomized_offset_range_y, self.cfg.spawn_randomized_offset_range_z], device=self.device)
         spawn_noise = (torch.rand_like(chosen_start_pos) - 0.5) * 2.0
         spawn_noise *= random_spawn_scales
@@ -932,40 +1099,70 @@ class JugglingAgentEnv(DirectRLEnv):
         #     env_ids = torch.arange(self.num_physical_envs, device=self.device)
         virtual_right_ids = physical_ids + self.num_physical_envs
         self.episode_length_buf[virtual_right_ids] = 0
+        self._apply_init_joint_pose(
+            self.robot, 
+            self.init_joint_pos, 
+            physical_ids, 
+            joint_ids=None # Applies to all 54 joints
+        )
         self.reset_buf[virtual_right_ids] = 0
         self.reset_terminated[virtual_right_ids] = 0
         self.reset_time_outs[virtual_right_ids] = 0
             
-        self._apply_init_joint_pose(self.left_hand, self.init_left_joint_pos, physical_ids, self.left_hand_idx)
-        self._apply_init_joint_pose(self.right_hand, self.init_right_joint_pos, physical_ids, self.right_hand_idx)
-        
-        random_hand_start = torch.randint(0, 2, (len(physical_ids),), device=self.device)
-        self.ball_throw_hand[physical_ids] = random_hand_start
-        self._reset_ball_pos(physical_ids)
-        
+        # self._apply_init_joint_pose(self.left_hand, self.init_left_joint_pos, physical_ids, self.left_hand_idx)
+        # self._apply_init_joint_pose(self.right_hand, self.init_right_joint_pos, physical_ids, self.right_hand_idx)
+
         # for _ in range(1):
         #     self.sim.step()
 
         self.scene.update(dt=self.cfg.sim.dt)
 
-        l_wrist = self.left_hand.data.body_pos_w[physical_ids, self.left_wrist_idx]
-        r_wrist = self.right_hand.data.body_pos_w[physical_ids, self.right_wrist_idx]
-        l_knuckle = self.left_hand.data.body_pos_w[physical_ids, self.left_knuckle_idx]
-        r_knuckle = self.right_hand.data.body_pos_w[physical_ids, self.right_knuckle_idx]
+        # l_wrist = self.left_hand.data.body_pos_w[physical_ids, self.left_wrist_idx]
+        # r_wrist = self.right_hand.data.body_pos_w[physical_ids, self.right_wrist_idx]
+        # l_knuckle = self.left_hand.data.body_pos_w[physical_ids, self.left_knuckle_idx]
+        # r_knuckle = self.right_hand.data.body_pos_w[physical_ids, self.right_knuckle_idx]
 
         env_origins = self.scene.env_origins[physical_ids]
-        l_wrist_local = l_wrist - env_origins
-        r_wrist_local = r_wrist - env_origins
-        l_knuckle_local = l_knuckle - env_origins
-        r_knuckle_local = r_knuckle - env_origins
+
+        l_palm = self.robot.data.body_pos_w[physical_ids, self.left_palm_idx]
+        r_palm = self.robot.data.body_pos_w[physical_ids, self.right_palm_idx]
         
-        # Calculate Palm Center
-        left_palm_pos = (l_wrist_local * (1 - self.cfg.center_of_hand_bias)) + (l_knuckle_local * self.cfg.center_of_hand_bias)
-        right_palm_pos = (r_wrist_local * (1 - self.cfg.center_of_hand_bias)) + (r_knuckle_local * self.cfg.center_of_hand_bias)
+        l_mid = self.robot.data.body_pos_w[physical_ids, self.left_mid_knuckle_idx]
+        l_ring = self.robot.data.body_pos_w[physical_ids, self.left_ring_knuckle_idx]
         
-        # Save to our fixed buffer
-        self.initial_hand_target_position[physical_ids, 0] = left_palm_pos
-        self.initial_hand_target_position[physical_ids, 1] = right_palm_pos
+        r_mid = self.robot.data.body_pos_w[physical_ids, self.right_mid_knuckle_idx]
+        r_ring = self.robot.data.body_pos_w[physical_ids, self.right_ring_knuckle_idx]
+
+        # 2. Convert to local frame
+        l_palm_local = l_palm - env_origins
+        r_palm_local = r_palm - env_origins
+        l_front_anchor = ((l_mid + l_ring) / 2.0) - env_origins
+        r_front_anchor = ((r_mid + r_ring) / 2.0) - env_origins
+        
+        # 3. Interpolate
+        left_palm_target = (l_palm_local * (1 - self.cfg.center_of_hand_bias)) + (l_front_anchor * self.cfg.center_of_hand_bias)
+        right_palm_target = (r_palm_local * (1 - self.cfg.center_of_hand_bias)) + (r_front_anchor * self.cfg.center_of_hand_bias)
+        
+        self.initial_hand_target_position[physical_ids, 0] = left_palm_target
+        self.initial_hand_target_position[physical_ids, 1] = right_palm_target
+        # l_wrist_local = l_wrist - env_origins
+        # r_wrist_local = r_wrist - env_origins
+        # l_knuckle_local = l_knuckle - env_origins
+        # r_knuckle_local = r_knuckle - env_origins
+        
+        # # Calculate Palm Center
+        # left_palm_pos = (l_wrist_local * (1 - self.cfg.center_of_hand_bias)) + (l_knuckle_local * self.cfg.center_of_hand_bias)
+        # right_palm_pos = (r_wrist_local * (1 - self.cfg.center_of_hand_bias)) + (r_knuckle_local * self.cfg.center_of_hand_bias)
+        
+        # # Save to our fixed buffer
+        # self.initial_hand_target_position[physical_ids, 0] = left_palm_pos
+        # self.initial_hand_target_position[physical_ids, 1] = right_palm_pos
+
+        
+        random_hand_start = torch.randint(0, 2, (len(physical_ids),), device=self.device)
+        self.ball_throw_hand[physical_ids] = random_hand_start
+        self._reset_ball_pos(physical_ids)
+        
 
         self.detect_events()
 
