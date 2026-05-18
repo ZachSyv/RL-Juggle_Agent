@@ -1,0 +1,17 @@
+<mujoco model="juggling_ball">
+    <compiler angle="radian" coordinate="local"/>
+    
+    <asset>
+        <material name="ball_mat" rgba="0.95 0.9 0.6 1"/>
+    </asset>
+
+    <worldbody>
+        <body name="ball" pos="0 0 0">
+            <joint type="free" name="root_joint"/>
+            
+            <geom name="collision_sphere" type="sphere" size="0.03175" mass="0.13" 
+                  friction="0.8 0.8 0" condim="3" material="ball_mat" 
+                  solimp="0.9 0.95 0.001" solref="0.02 1.0"/>
+        </body>
+    </worldbody>
+</mujoco>
