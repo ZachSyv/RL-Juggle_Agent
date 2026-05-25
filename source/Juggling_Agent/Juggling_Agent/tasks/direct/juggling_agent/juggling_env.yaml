@@ -1,0 +1,97 @@
+# data/envs/juggling_env.yaml
+
+env: "juggling"
+num_envs: 16384
+sim_freq: 200
+control_freq: 50 # 200 sim_freq / 4 decimation = 50Hz control loop
+
+engine:
+  name: "isaac_lab"
+  control_mode: "pos" 
+  env_spacing: 4.0
+
+# -------------------------------------------------------
+# ASSET CONFIGURATION (Parsed by isaac_lab_engine.py)
+# -------------------------------------------------------
+objs:
+  - name: "g1_robot"
+    obj_type: "articulated"
+    asset_file: "g1_with_dex5_hands.usd"
+    start_pos: [0.0, 0.0, 0.8]
+    start_rot: [1.0, 0.0, 0.0, 0.0] # WXYZ format
+    is_visual: False
+    enable_self_collisions: True
+    fix_root: True
+    disable_motors: False
+
+  - name: "ball_1"
+    obj_type: "rigid"
+    asset_file: "juggling_ball.usd" # You must bake your programmatic sphere into a USD
+    start_pos: [0.0, -0.25, 0.5]    # hand_pos[0] + ball_offset[0]
+    start_rot: [1.0, 0.0, 0.0, 0.0]
+    is_visual: False
+    enable_self_collisions: True
+    fix_root: False
+    color: [0.95, 0.9, 0.6]
+
+task:
+  # Environment Geometry & Setup
+  episode_length_s: 5.0
+  num_balls: 1
+  should_cross: True
+  num_hands: 2
+  
+  # Target Parameters
+  target_height: 0.9
+  target_delta_height: 0.45
+  ground_height: 0.0
+  out_of_bounds_radius: 2.0
+  center_of_hand_bias: 0.775
+  
+  # Randomization
+  spawn_randomized_offset_range_x: 0.045
+  spawn_randomized_offset_range_y: 0.0225
+  spawn_randomized_offset_range_z: 0.0
+  
+  # Control
+  action_scale: 1.5
+  action_smoothing: 0.5
+  
+  # Tolerances & Sigmas
+  sigma_catch_height: 0.05
+  sigma_apex_height: 0.05
+  sigma_wide_delta_throw: 0.8
+  sigma_delta_throw: 0.3
+  sigma_wide_throw_accuracy: 0.55
+  sigma_throw_accuracy: 0.075
+  sigma_delta_throw_catch_wide: 0.25
+  sigma_delta_throw_catch: 0.1
+  
+  # Thresholds & Timing
+  catch_payout_time: 0.25
+  hoarding_time_threshold: 0.75
+  start_hold_threshold: 0.75
+  contact_threshold: 0.01
+  catch_precise_height_ratio: 0.95
+  min_delta_throw_height: -0.1
+  min_hand_dist: 0.2
+  min_throw_velocity: 0.25
+  min_vertical_velocity: -0.1
+  above_hand_threshold: 0.05
+
+  # Continuous Reward Weights
+  w_hoarding: 20.0
+  w_jitter: 0.1
+  w_hands_touching: 15.0
+
+  # Discrete Reward Weights
+  w_drop: 1.0
+  w_lazy_drop: 5.0
+  w_wide_delta_throw: 30.0
+  w_wide_accuracy: 10.0
+  w_precise_delta_throw: 100.0
+  w_precise_accuracy: 50.0
+  w_apex_height: 100.0
+  w_catch: 500.0
+  
+  num_ball_up_reward_scale: [1.0, 0.1, 0.0, 0.0]
